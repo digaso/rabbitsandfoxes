@@ -160,6 +160,20 @@ Deterministic movement uses `(generation + row + col) % possibleMoves` ensuring 
 NOTE: In the project folder there are 2 plots showcasing some plots for more info path: benchmark_plots
 
 
+## Main Difficulties
+
+**Cross-Boundary Movement Coordination:**
+The most challenging aspect was handling entity movements across thread boundaries without introducing race conditions. The solution required implementing a deferred conflict resolution system where movements are registered but not executed immediately, followed by synchronized resolution phases.
+
+**Dynamic Load Balancing Implementation:**
+Achieving effective load distribution based on entity density rather than fixed grid partitions required some care. The challenge was maintaining efficiency while preventing workload imbalances as entity populations shifted during simulation.
+
+**Deterministic Parallel Execution:**
+Ensuring identical results across different thread counts demanded careful synchronization point placement and deterministic movement selection algorithms.
+
+**Performance Optimization vs. Correctness:**
+Balancing synchronization overhead with computational parallelism proved difficult. Too few synchronization points introduced race conditions, while excessive synchronization eliminated performance gains.
+
 ## Conclusion
 
-This project successfully implements a parallel rabbits and foxes ecosystem simulation demonstrating advanced concurrent programming techniques. The modular architecture separates concerns effectively, with dedicated modules for entity management, movement analysis, thread coordination, and conflict resolution. The implementation showcases sophisticated parallel algorithms including dynamic load balancing, territorial thread ownership, and structured synchronization patterns that ensure deterministic results across different thread configurations while maintaining thread safety.
+This project implements a parallel rabbits and foxes ecosystem simulation demonstrating advanced concurrent programming techniques. The modular architecture separates concerns effectively, with dedicated modules for entity management, movement analysis, thread coordination, and conflict resolution. The implementation showcases sophisticated parallel algorithms including dynamic load balancing, territorial thread ownership, and structured synchronization patterns that ensure deterministic results across different thread configurations while maintaining thread safety.
