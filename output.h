@@ -11,10 +11,10 @@ void loadWorldEntities(FILE* file, InputData* simulationData, WorldSlot* world);
 void calculateEntityDistribution(InputData* inputData, WorldSlot* world);
 
 // Output functions  
-void printResults(FILE* outputFile, InputData* inputData, WorldSlot* worldSlot);
-void printPrettyAllGen(FILE* outputFile, InputData* inputData, WorldSlot* world);
+void outputSimulationResults(FILE* outputFile, InputData* simulationData, WorldSlot* worldMatrix);
+void displayGenerationState(FILE* outputFile, InputData* simulationData, WorldSlot* world);
 
 // Cleanup functions
-void freeWorldMatrix(InputData* data, WorldSlot* worldMatrix);
+void deallocateWorldMatrix(InputData* simulationData, WorldSlot* worldMatrix);
 
 #endif // OUTPUT_H

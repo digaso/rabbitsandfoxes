@@ -89,9 +89,9 @@ InputData *parseSimulationParameters(FILE *file);
  */
 WorldSlot *initializeWorldMatrix(InputData *data);
 
-void executeSequentialThread(FILE *inputFile, FILE *outputFile);
+void runSequentialSimulation(FILE *inputFile, FILE *outputFile);
 
-void executeWithThreadCount(int threadCount, FILE *inputFile, FILE *outputFile);
+void runParallelSimulation(int threadCount, FILE *inputFile, FILE *outputFile);
 
 void loadWorldEntities(FILE *inputFile, InputData *inputData, WorldSlot *world);
 
@@ -106,13 +106,13 @@ void loadWorldEntities(FILE *inputFile, InputData *inputData, WorldSlot *world);
  * @return
  */
 void
-performGeneration(int threadNumber, int genNumber, InputData *inputData,
+executeParallelGeneration(int threadNumber, int genNumber, InputData *simulationData,
                   struct ThreadedData *threadedData, WorldSlot *world, ThreadRowData *threadRowData);
 
-void handleConflicts(struct ThreadConflictData *conflictData, int conflictCount, Conflict *conflicts);
+void resolveThreadConflicts(struct ThreadConflictData *conflictContext, int conflictCount, Conflict *conflictArray);
 
-void printResults(FILE *outputFile, InputData *inputData, WorldSlot *world);
+void outputSimulationResults(FILE *outputFile, InputData *simulationData, WorldSlot *worldMatrix);
 
-void freeWorldMatrix(InputData *data, WorldSlot *worldMatrix);
+void deallocateWorldMatrix(InputData *simulationData, WorldSlot *worldMatrix);
 
 #endif //TRABALHO_2_RABBITSANDFOXES_H

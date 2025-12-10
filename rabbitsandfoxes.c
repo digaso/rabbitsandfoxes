@@ -14,7 +14,7 @@
 struct InitialInputData {
     int threadNumber;
 
-    InputData* inputData;
+    InputData* simulationData;
 
     WorldSlot* world;
 
@@ -26,24 +26,24 @@ struct InitialInputData {
 };
 
 
-void printPrettyAllGen(FILE*, InputData*, WorldSlot*);
+void displayGenerationState(FILE*, InputData*, WorldSlot*);
 
-void performSequentialGeneration(int genNumber, InputData* inputData, WorldSlot* world);
+void executeSequentialGeneration(int genNumber, InputData* simulationData, WorldSlot* world);
 
 
 static void
-makeCopyOfPartOfWorld(int threadNumber, InputData* data, struct ThreadedData* threadedData, WorldSlot* toCopy,
-    WorldSlot* destination,
+copyWorldRegionToBuffer(int threadNumber, InputData* simulationData, struct ThreadedData* threadedData, WorldSlot* sourceWorld,
+    WorldSlot* destinationBuffer,
     int copyStartRow, int copyEndRow) {
 
     //    pthread_barrier_wait(&threadedData->barrier);
 
-        //synchronizeWithAdjacentThreads(threadNumber, data, threadedData);
+        //synchronizeWithAdjacentThreads(threadNumber, simulationData, threadedData);
 
     int rowCount = (copyEndRow - copyStartRow) + 1;
 
-    memcpy(destination, &toCopy[ PROJECT(data->columns, copyStartRow, 0) ],
-        (rowCount * data->columns * sizeof(WorldSlot)));
+    memcpy(destinationBuffer, &sourceWorld[ PROJECT(simulationData->columns, copyStartRow, 0) ],
+        (rowCount * simulationData->columns * sizeof(WorldSlot)));
 
     if (threadedData != NULL) {
         //wait for surrounding threads to also complete their copy to allow changes to the tray
@@ -53,44 +53,44 @@ makeCopyOfPartOfWorld(int threadNumber, InputData* data, struct ThreadedData* th
 
 
 
-void executeSequentialThread(FILE* inputFile, FILE* outputFile) {
+void runSequentialSimulation(FILE* inputFile, FILE* outputFile) {
 
-    InputData* data = parseSimulationParameters(inputFile);
+    InputData* simulationData = parseSimulationParameters(inputFile);
 
-    data->threads = 1;
+    simulationData->threads = 1;
 
     struct ThreadedData* threadedData = malloc(sizeof(struct ThreadedData));
 
-    initializeThreadingSystem(data->threads, data, threadedData);
+    initializeThreadingSystem(simulationData->threads, simulationData, threadedData);
 
-    WorldSlot* world = initializeWorldMatrix(data);
+    WorldSlot* world = initializeWorldMatrix(simulationData);
 
-    loadWorldEntities(inputFile, data, world);
+    loadWorldEntities(inputFile, simulationData, world);
 
     if (PRINT_ALL_GEN) {
         outputFile = fopen("allgen.txt", "w");
     }
 
-    for (int gen = 0; gen < data->n_gen; gen++) {
+    for (int gen = 0; gen < simulationData->n_gen; gen++) {
 
         if (PRINT_ALL_GEN) {
             fprintf(outputFile, "Generation %d\n", gen);
             printf("Generation %d\n", gen);
-            printPrettyAllGen(outputFile, data, world);
+            displayGenerationState(outputFile, simulationData, world);
             fprintf(outputFile, "\n");
         }
 
-        performSequentialGeneration(gen, data, world);
+        executeSequentialGeneration(gen, simulationData, world);
     }
 
     printf("RESULTS:\n");
 
-    printResults(outputFile, data, world);
+    outputSimulationResults(outputFile, simulationData, world);
     fflush(outputFile);
-    freeWorldMatrix(data, world);
+    deallocateWorldMatrix(simulationData, world);
 }
 
-static void executeThread(struct InitialInputData* args) {
+static void executeWorkerThread(struct InitialInputData* args) {
 
     FILE* outputFile;
 
@@ -100,7 +100,7 @@ static void executeThread(struct InitialInputData* args) {
 
     ThreadRowData* threadRowData = args->threadRowData;
 
-    for (int gen = 0; gen < args->inputData->n_gen; gen++) {
+    for (int gen = 0; gen < args->simulationData->n_gen; gen++) {
 
         if (args->printOutput) {
             pthread_barrier_wait(&args->threadedData->barrier);
@@ -108,14 +108,14 @@ static void executeThread(struct InitialInputData* args) {
             if (args->threadNumber == 0) {
                 fprintf(outputFile, "Generation %d\n", gen);
                 printf("Generation %d\n", gen);
-                printPrettyAllGen(outputFile, args->inputData, args->world);
+                displayGenerationState(outputFile, args->simulationData, args->world);
                 fprintf(outputFile, "\n");
             }
 
             pthread_barrier_wait(&args->threadedData->barrier);
         }
 
-        performGeneration(args->threadNumber, gen, args->inputData,
+        executeParallelGeneration(args->threadNumber, gen, args->simulationData,
             args->threadedData, args->world, threadRowData);
     }
 
@@ -125,54 +125,54 @@ static void executeThread(struct InitialInputData* args) {
 
 }
 
-void executeWithThreadCount(int threadCount, FILE* inputFile, FILE* outputFile) {
+void runParallelSimulation(int threadCount, FILE* inputFile, FILE* outputFile) {
 
-    InputData* data = parseSimulationParameters(inputFile);
+    InputData* simulationData = parseSimulationParameters(inputFile);
 
-    data->threads = threadCount;
+    simulationData->threads = threadCount;
 
     struct ThreadedData* threadedData = malloc(sizeof(struct ThreadedData));
 
-    initializeThreadingSystem(data->threads, data, threadedData);
+    initializeThreadingSystem(simulationData->threads, simulationData, threadedData);
 
-    WorldSlot* world = initializeWorldMatrix(data);
+    WorldSlot* world = initializeWorldMatrix(simulationData);
 
-    loadWorldEntities(inputFile, data, world);
+    loadWorldEntities(inputFile, simulationData, world);
 
-    if (!validateThreadConfiguration(data)) {
+    if (!validateThreadConfiguration(simulationData)) {
         exit(1);
     }
 
     ThreadRowData* threadRowData = malloc(sizeof(ThreadRowData) * threadCount);
 
-    struct InitialInputData** inputDataList = malloc(sizeof(struct InitialInputData*) * threadCount);
+    struct InitialInputData** simulationDataList = malloc(sizeof(struct InitialInputData*) * threadCount);
 
     struct timeval start, end;
 
     gettimeofday(&start, NULL);
 
-    distributeWorkloadAcrossThreads(threadCount, threadRowData, data);
+    distributeWorkloadAcrossThreads(threadCount, threadRowData, simulationData);
 
     for (int thread = 0; thread < threadCount; thread++) {
 
-        struct InitialInputData* inputData = malloc(sizeof(struct InitialInputData));
+        struct InitialInputData* threadInput = malloc(sizeof(struct InitialInputData));
 
-        inputData->inputData = data;
-        inputData->threadNumber = thread;
-        inputData->world = world;
-        inputData->threadedData = threadedData;
-        inputData->printOutput = PRINT_ALL_GEN;
-        inputData->threadRowData = threadRowData;
+        threadInput->simulationData = simulationData;
+        threadInput->threadNumber = thread;
+        threadInput->world = world;
+        threadInput->threadedData = threadedData;
+        threadInput->printOutput = PRINT_ALL_GEN;
+        threadInput->threadRowData = threadRowData;
 
-        inputDataList[ thread ] = inputData;
+        simulationDataList[ thread ] = threadInput;
 
         printf("Initializing thread %d \n", thread);
 
-        pthread_create(&threadedData->threads[ thread ], NULL, (void* (*)(void*)) executeThread, inputData);
-        //        executeThread(inputData);
+        pthread_create(&threadedData->threads[ thread ], NULL, (void* (*)(void*)) executeWorkerThread, threadInput);
+        //        executeThread(simulationData);
     }
 
-    for (int thread = 0; thread < data->threads; thread++) {
+    for (int thread = 0; thread < simulationData->threads; thread++) {
         pthread_join(threadedData->threads[ thread ], NULL);
     }
 
@@ -181,54 +181,54 @@ void executeWithThreadCount(int threadCount, FILE* inputFile, FILE* outputFile) 
     long seconds = (end.tv_sec - start.tv_sec);
     long micros = ((seconds * 1000000) + end.tv_usec) - (start.tv_usec);
 
-    for (int thread = 0; thread < data->threads; thread++) {
-        free(inputDataList[ thread ]);
+    for (int thread = 0; thread < simulationData->threads; thread++) {
+        free(simulationDataList[ thread ]);
     }
 
-    free(inputDataList);
+    free(simulationDataList);
 
     printf("RESULTS:\n");
 
-    printResults(outputFile, data, world);
+    outputSimulationResults(outputFile, simulationData, world);
     fflush(outputFile);
     printf("Took %ld microseconds\n", micros);
-    freeWorldMatrix(data, world);
+    deallocateWorldMatrix(simulationData, world);
     destroyThreadingSystem(threadCount, threadedData);
 
 }
 
-static void tickRabbit(int genNumber, int startRow, int endRow, int row, int col, WorldSlot* slot,
-    InputData* inputData,
+static void processRabbitTurn(int genNumber, int threadStartRow, int threadEndRow, int currentRow, int currentCol, WorldSlot* currentSlot,
+    InputData* simulationData,
     WorldSlot* world,
-    struct RabbitMovements* possibleRabbitMoves, Conflicts* conflictsForThread) {
+    struct RabbitMovements* movementOptions, Conflicts* threadConflicts) {
 
-    RabbitInfo* rabbitInfo = slot->entityInfo.rabbitInfo;
+    RabbitInfo* rabbitInfo = currentSlot->entityInfo.rabbitInfo;
 
     //If there is no moves then the move is successful
     int movementResult = 1, procriated = 0;
 
 #ifdef VERBOSE
-    printf("Checking rabbit (%d, %d)\n", row, col);
+    printf("Checking rabbit (%d, %d)\n", currentRow, currentCol);
 #endif
 
-    if (possibleRabbitMoves->emptyMovements > 0) {
+    if (movementOptions->emptyMovements > 0) {
 
-        int nextPosition = (genNumber + row + col) % possibleRabbitMoves->emptyMovements;
+        int nextPosition = (genNumber + currentRow + currentCol) % movementOptions->emptyMovements;
 
-        MoveDirection direction = possibleRabbitMoves->emptyDirections[ nextPosition ];
+        MoveDirection direction = movementOptions->emptyDirections[ nextPosition ];
         Move* move = getMoveDirection(direction);
 
-        int newRow = row + move->x, newCol = col + move->y;
+        int newRow = currentRow + move->x, newCol = currentCol + move->y;
 
 #ifdef VERBOSE
-        printf("Moving rabbit (%d, %d) with direction %d (Index: %d, Possible: %d) to location %d %d age %d \n", row, col, direction,
-            nextPosition, possibleRabbitMoves->emptyMovements,
+        printf("Moving rabbit (%d, %d) with direction %d (Index: %d, Possible: %d) to location %d %d age %d \n", currentRow, currentCol, direction,
+            nextPosition, movementOptions->emptyMovements,
             newRow, newCol, rabbitInfo->currentGen);
 #endif
 
-        WorldSlot* realSlot = &world[ PROJECT(inputData->columns, row, col) ];
+        WorldSlot* realSlot = &world[ PROJECT(simulationData->columns, currentRow, currentCol) ];
 
-        if (rabbitInfo->currentGen >= inputData->gen_proc_rabbits) {
+        if (rabbitInfo->currentGen >= simulationData->gen_proc_rabbits) {
             //If the rabbit is old enough to procriate we need to leave a rabbit at that location
 
             //Initialize a new rabbit for that position
@@ -238,7 +238,7 @@ static void tickRabbit(int genNumber, int startRow, int endRow, int row, int col
             rabbitInfo->prevGen = 0;
             rabbitInfo->currentGen = 0;
 
-            inputData->entitiesPerRow[ row ]++;
+            simulationData->entitiesPerRow[ currentRow ]++;
 
             procriated = 1;
         }
@@ -247,31 +247,31 @@ static void tickRabbit(int genNumber, int startRow, int endRow, int row, int col
             realSlot->entityInfo.rabbitInfo = NULL;
         }
 
-        if (newRow < startRow || newRow > endRow) {
+        if (newRow < threadStartRow || newRow > threadEndRow) {
             //Conflict, we have to access another thread's memory space, create a conflict
             //And store it in our conflict list
-            createAndStoreConflict(conflictsForThread, newRow < startRow, newRow, newCol, slot);
+            createAndStoreConflict(threadConflicts, newRow < threadStartRow, newRow, newCol, currentSlot);
 
         }
         else {
-            WorldSlot* newSlot = &world[ PROJECT(inputData->columns, newRow, newCol) ];
+            WorldSlot* newSlot = &world[ PROJECT(simulationData->columns, newRow, newCol) ];
 
             movementResult = processRabbitMovement(rabbitInfo, newSlot);
 
             if (movementResult == 1) {
-                inputData->entitiesPerRow[ newRow ]++;
+                simulationData->entitiesPerRow[ newRow ]++;
             }
         }
     }
     else {
         //No possible movements for the rabbit
-        inputData->entitiesPerRow[ row ]++;
+        simulationData->entitiesPerRow[ currentRow ]++;
 
     }
 
     //Increment the current after performing the move, but before the conflict resolution, so that
     //we only generate children in the next generation, but we still have the correct
-    //Number to handle the conflicts
+    //Number to handle the conflictArray
     if (!procriated) {
         //Only increment if we did not procriate
         rabbitInfo->prevGen = rabbitInfo->currentGen;
@@ -285,44 +285,44 @@ static void tickRabbit(int genNumber, int startRow, int endRow, int row, int col
 }
 
 static void
-performRabbitGeneration(int threadNumber, int genNumber, InputData* inputData, struct ThreadedData* threadedData,
-    WorldSlot* world, WorldSlot* worldCopy, int startRow, int endRow) {
+executeRabbitGeneration(int threadNumber, int genNumber, InputData* simulationData, struct ThreadedData* threadedData,
+    WorldSlot* world, WorldSlot* worldSnapshot, int threadStartRow, int threadEndRow) {
 
-    int storagePaddingTop = startRow > 0 ? 1 : 0;
+    int storagePaddingTop = threadStartRow > 0 ? 1 : 0;
 
 #ifdef VERBOSE
-    printf("End Row: %d, start row: %d, storage padding top %d\n", endRow, startRow, storagePaddingTop);
+    printf("End Row: %d, start row: %d, storage padding top %d\n", threadEndRow, threadStartRow, storagePaddingTop);
 #endif
-    int trueRowCount = (endRow - startRow);
+    int trueRowCount = (threadEndRow - threadStartRow);
 
-    Conflicts* conflictsForThread;
+    Conflicts* threadConflicts;
 
     if (threadedData != NULL)
-        conflictsForThread = threadedData->conflictPerThreads[ threadNumber ];
+        threadConflicts = threadedData->conflictPerThreads[ threadNumber ];
 
     //First move the rabbits
 
-    struct RabbitMovements* possibleRabbitMoves = createRabbitMovementContext();
+    struct RabbitMovements* movementOptions = createRabbitMovementContext();
 
     for (int copyRow = 0; copyRow <= trueRowCount; copyRow++) {
-        int row = copyRow + startRow;
-        inputData->entitiesPerRow[ row ] = 0;
+        int row = copyRow + threadStartRow;
+        simulationData->entitiesPerRow[ row ] = 0;
     }
 
     for (int copyRow = 0; copyRow <= trueRowCount; copyRow++) {
-        int row = copyRow + startRow;
+        int row = copyRow + threadStartRow;
 
-        for (int col = 0; col < inputData->columns; col++) {
+        for (int col = 0; col < simulationData->columns; col++) {
 
-            WorldSlot* slot = &worldCopy[ PROJECT(inputData->columns, copyRow + storagePaddingTop, col) ];
+            WorldSlot* currentSlot = &worldSnapshot[ PROJECT(simulationData->columns, copyRow + storagePaddingTop, col) ];
 
-            if (slot->slotContent == RABBIT) {
+            if (currentSlot->slotContent == RABBIT) {
 
-                analyzeRabbitMovementOptions(copyRow + storagePaddingTop, col, inputData, worldCopy,
-                    possibleRabbitMoves);
+                analyzeRabbitMovementOptions(copyRow + storagePaddingTop, col, simulationData, worldSnapshot,
+                    movementOptions);
 
-                tickRabbit(genNumber, startRow, endRow, row, col, slot,
-                    inputData, world, possibleRabbitMoves, conflictsForThread);
+                processRabbitTurn(genNumber, threadStartRow, threadEndRow, row, col, currentSlot,
+                    simulationData, world, movementOptions, threadConflicts);
 
                 //Even though we get passed the struct by value, we have to free it,as there's some arrays
                 //Contained in it
@@ -330,22 +330,22 @@ performRabbitGeneration(int threadNumber, int genNumber, InputData* inputData, s
         }
     }
 
-    destroyRabbitMovementContext(possibleRabbitMoves);
+    destroyRabbitMovementContext(movementOptions);
 
-    //Initialize with the conflicts at null because we don't want to access the memory
+    //Initialize with the conflictArray at null because we don't want to access the memory
     //Until we know it's safe to do so
-    struct ThreadConflictData conflictData = { threadNumber, startRow, endRow, inputData,
+    struct ThreadConflictData conflictData = { threadNumber, threadStartRow, threadEndRow, simulationData,
                                               world, threadedData };
 
     synchronizeAndResolveThreadConflicts(&conflictData);
 }
 
 
-static void tickFox(int genNumber, int startRow, int endRow, int row, int col, WorldSlot* slot,
-    InputData* inputData, WorldSlot* world,
-    struct FoxMovements* foxMovements, Conflicts* conflictsForThread) {
+static void processFoxTurn(int genNumber, int threadStartRow, int threadEndRow, int currentRow, int currentCol, WorldSlot* currentSlot,
+    InputData* simulationData, WorldSlot* world,
+    struct FoxMovements* foxMovements, Conflicts* threadConflicts) {
 
-    FoxInfo* foxInfo = slot->entityInfo.foxInfo;
+    FoxInfo* foxInfo = currentSlot->entityInfo.foxInfo;
 
     //If there is no move, the result is positive, as no other animal should try to eat us
     int foxMovementResult = 1;
@@ -356,20 +356,20 @@ static void tickFox(int genNumber, int startRow, int endRow, int row, int col, W
     foxInfo->currentGenFood++;
 
 #ifdef VERBOSE
-    printf("Checking fox %p (%d %d) food %d\n", foxInfo, row, col, foxInfo->currentGenFood);
+    printf("Checking fox %p (%d %d) food %d\n", foxInfo, currentRow, currentCol, foxInfo->currentGenFood);
 #endif
 
     if (foxMovements->rabbitMovements <= 0) {
-        if (foxInfo->currentGenFood >= inputData->gen_food_foxes) {
+        if (foxInfo->currentGenFood >= simulationData->gen_food_foxes) {
             //If the fox gen food reaches the limit, kill it before it moves.
-            WorldSlot* realSlot = &world[ PROJECT(inputData->columns, row, col) ];
+            WorldSlot* realSlot = &world[ PROJECT(simulationData->columns, currentRow, currentCol) ];
 
             realSlot->slotContent = EMPTY;
 
             realSlot->entityInfo.foxInfo = NULL;
 
 #ifdef VERBOSE
-            printf("Fox %p on %d %d Starved to death\n", foxInfo, row, col);
+            printf("Fox %p on %d %d Starved to death\n", foxInfo, currentRow, currentCol);
 #endif
 
             destroyFoxEntity(foxInfo);
@@ -385,15 +385,15 @@ static void tickFox(int genNumber, int startRow, int endRow, int row, int col, W
 
     //Can only breed a fox when we are capable of moving
     if ((foxMovements->emptyMovements > 0 || foxMovements->rabbitMovements > 0)) {
-        WorldSlot* realSlot = &world[ PROJECT(inputData->columns, row, col) ];
+        WorldSlot* realSlot = &world[ PROJECT(simulationData->columns, currentRow, currentCol) ];
 
-        if (foxInfo->currentGenProc >= inputData->gen_proc_foxes) {
+        if (foxInfo->currentGenProc >= simulationData->gen_proc_foxes) {
             realSlot->slotContent = FOX;
 
             realSlot->entityInfo.foxInfo = createFoxEntity();
             realSlot->entityInfo.foxInfo->genUpdated = genNumber;
 
-            inputData->entitiesPerRow[ row ]++;
+            simulationData->entitiesPerRow[ currentRow ]++;
 
             foxInfo->genUpdated = genNumber;
             foxInfo->prevGenProc = foxInfo->currentGenProc;
@@ -401,7 +401,7 @@ static void tickFox(int genNumber, int startRow, int endRow, int row, int col, W
             procriated = 1;
         }
         else {
-            //Clear the slot
+            //Clear the currentSlot
             realSlot->slotContent = EMPTY;
 
             realSlot->entityInfo.foxInfo = NULL;
@@ -409,12 +409,12 @@ static void tickFox(int genNumber, int startRow, int endRow, int row, int col, W
     }
 
     if (foxMovements->rabbitMovements > 0) {
-        nextPosition = (genNumber + row + col) % foxMovements->rabbitMovements;
+        nextPosition = (genNumber + currentRow + currentCol) % foxMovements->rabbitMovements;
 
         direction = foxMovements->rabbitDirections[ nextPosition ];
     }
     else if (foxMovements->emptyMovements > 0) {
-        nextPosition = (genNumber + row + col) % foxMovements->emptyMovements;
+        nextPosition = (genNumber + currentRow + currentCol) % foxMovements->emptyMovements;
 
         direction = foxMovements->emptyDirections[ nextPosition ];
     }
@@ -422,27 +422,27 @@ static void tickFox(int genNumber, int startRow, int endRow, int row, int col, W
     if (foxMovements->rabbitMovements > 0 || foxMovements->emptyMovements > 0) {
         Move* move = getMoveDirection(direction);
 
-        int newRow = row + move->x, newCol = col + move->y;
+        int newRow = currentRow + move->x, newCol = currentCol + move->y;
 
-        if (newRow < startRow || newRow > endRow) {
+        if (newRow < threadStartRow || newRow > threadEndRow) {
             //Conflict, we have to access another thread's memory space, create a conflict
             //And store it in our conflict list
-            createAndStoreConflict(conflictsForThread, newRow < startRow, newRow, newCol, slot);
+            createAndStoreConflict(threadConflicts, newRow < threadStartRow, newRow, newCol, currentSlot);
         }
         else {
-            WorldSlot* newSlot = &world[ PROJECT(inputData->columns, newRow, newCol) ];
+            WorldSlot* newSlot = &world[ PROJECT(simulationData->columns, newRow, newCol) ];
 
             foxMovementResult = processFoxMovement(foxInfo, newSlot);
             //We only increment the rows under our control, to avoid concurrency issues
             if (foxMovementResult == 1) {
-                inputData->entitiesPerRow[ newRow ]++;
+                simulationData->entitiesPerRow[ newRow ]++;
             }
         }
     }
     else {
-        inputData->entitiesPerRow[ row ]++;
+        simulationData->entitiesPerRow[ currentRow ]++;
 #ifdef VERBOSE
-        printf("FOX at %d %d has no possible movements\n", row, col);
+        printf("FOX at %d %d has no possible movements\n", currentRow, currentCol);
 #endif
     }
 
@@ -472,33 +472,33 @@ static void tickFox(int genNumber, int startRow, int endRow, int row, int col, W
 }
 
 static void
-performFoxGeneration(int threadNumber, int genNumber, InputData* inputData, struct ThreadedData* threadedData,
-    WorldSlot* world, WorldSlot* worldCopy, int startRow, int endRow) {
+executeFoxGeneration(int threadNumber, int genNumber, InputData* simulationData, struct ThreadedData* threadedData,
+    WorldSlot* world, WorldSlot* worldSnapshot, int threadStartRow, int threadEndRow) {
 
-    int storagePaddingTop = startRow > 0 ? 1 : 0;
+    int storagePaddingTop = threadStartRow > 0 ? 1 : 0;
 
-    int trueRowCount = endRow - startRow;
+    int trueRowCount = threadEndRow - threadStartRow;
 
-    Conflicts* conflictsForThread;
+    Conflicts* threadConflicts;
     if (threadedData != NULL)
-        conflictsForThread = threadedData->conflictPerThreads[ threadNumber ];
+        threadConflicts = threadedData->conflictPerThreads[ threadNumber ];
 
     struct FoxMovements* foxMovements = createFoxMovementContext();
 
     for (int copyRow = 0; copyRow <= trueRowCount; copyRow++) {
-        for (int col = 0; col < inputData->columns; col++) {
+        for (int col = 0; col < simulationData->columns; col++) {
 
-            int row = copyRow + startRow;
+            int row = copyRow + threadStartRow;
 
-            WorldSlot* slot = &worldCopy[ PROJECT(inputData->columns, copyRow + storagePaddingTop, col) ];
+            WorldSlot* currentSlot = &worldSnapshot[ PROJECT(simulationData->columns, copyRow + storagePaddingTop, col) ];
 
-            if (slot->slotContent == FOX) {
+            if (currentSlot->slotContent == FOX) {
 
-                analyzeFoxMovementOptions(copyRow + storagePaddingTop, col, inputData,
-                    worldCopy, foxMovements);
+                analyzeFoxMovementOptions(copyRow + storagePaddingTop, col, simulationData,
+                    worldSnapshot, foxMovements);
 
-                tickFox(genNumber, startRow, endRow, row, col, slot,
-                    inputData, world, foxMovements, conflictsForThread);
+                processFoxTurn(genNumber, threadStartRow, threadEndRow, row, col, currentSlot,
+                    simulationData, world, foxMovements, threadConflicts);
 
             }
         }
@@ -506,72 +506,72 @@ performFoxGeneration(int threadNumber, int genNumber, InputData* inputData, stru
 
     destroyFoxMovementContext(foxMovements);
 
-    struct ThreadConflictData conflictData = { threadNumber, startRow, endRow, inputData,
+    struct ThreadConflictData conflictData = { threadNumber, threadStartRow, threadEndRow, simulationData,
                                               world, threadedData };
 
     synchronizeAndResolveThreadConflicts(&conflictData);
 }
 
-void performSequentialGeneration(int genNumber, InputData* inputData, WorldSlot* world) {
+void executeSequentialGeneration(int genNumber, InputData* simulationData, WorldSlot* world) {
 
-    int startRow = 0, endRow = inputData->rows - 1;
+    int threadStartRow = 0, threadEndRow = simulationData->rows - 1;
 
-    int copyStartRow = startRow, copyEndRow = endRow;
+    int copyStartRow = threadStartRow, copyEndRow = threadEndRow;
 
     int rowCount = (copyEndRow - copyStartRow) + 1;
 
     /**
  * A copy of our area of the tray. This copy will not be modified
  */
-    WorldSlot* worldCopy = malloc(sizeof(WorldSlot) * rowCount * inputData->columns);
+    WorldSlot* worldSnapshot = malloc(sizeof(WorldSlot) * rowCount * simulationData->columns);
 
 #ifdef VERBOSE
-    printf("Doing copy of world Row: %d to %d (Initial: %d %d, %d)\n", copyStartRow, copyEndRow, startRow, endRow,
-        inputData->rows);
+    printf("Doing copy of world Row: %d to %d (Initial: %d %d, %d)\n", copyStartRow, copyEndRow, threadStartRow, threadEndRow,
+        simulationData->rows);
 #endif
 
-    makeCopyOfPartOfWorld(0, inputData, NULL, world, worldCopy, copyStartRow, copyEndRow);
+    copyWorldRegionToBuffer(0, simulationData, NULL, world, worldSnapshot, copyStartRow, copyEndRow);
 
 #ifdef VERBOSE
     printf("Done copy on thread %d\n", threadNumber);
 #endif
 
-    performRabbitGeneration(0, genNumber, inputData, NULL, world, worldCopy, startRow, endRow);
+    executeRabbitGeneration(0, genNumber, simulationData, NULL, world, worldSnapshot, threadStartRow, threadEndRow);
 
-    makeCopyOfPartOfWorld(0, inputData, NULL, world, worldCopy, copyStartRow, copyEndRow);
+    copyWorldRegionToBuffer(0, simulationData, NULL, world, worldSnapshot, copyStartRow, copyEndRow);
 
-    performFoxGeneration(0, genNumber, inputData, NULL, world, worldCopy, startRow, endRow);
+    executeFoxGeneration(0, genNumber, simulationData, NULL, world, worldSnapshot, threadStartRow, threadEndRow);
 
-    free(worldCopy);
+    free(worldSnapshot);
 
 }
 
-void performGeneration(int threadNumber, int genNumber,
-    InputData* inputData, struct ThreadedData* threadedData, WorldSlot* world,
+void executeParallelGeneration(int threadNumber, int genNumber,
+    InputData* simulationData, struct ThreadedData* threadedData, WorldSlot* world,
     ThreadRowData* threadRowData) {
     ThreadRowData* ourData = &threadRowData[ threadNumber ];
 
-    //printf("Thread %d has start row %d and end row %d\n", threadNumber, ourData->startRow, ourData->endRow);
+    //printf("Thread %d has start row %d and end row %d\n", threadNumber, ourData->threadStartRow, ourData->threadEndRow);
 
-    int startRow = ourData->startRow,
-        endRow = ourData->endRow;
+    int threadStartRow = ourData->startRow,
+        threadEndRow = ourData->endRow;
 
-    int copyStartRow = startRow > 0 ? startRow - 1 : startRow,
-        copyEndRow = endRow < (inputData->rows - 1) ? endRow + 1 : endRow;
+    int copyStartRow = threadStartRow > 0 ? threadStartRow - 1 : threadStartRow,
+        copyEndRow = threadEndRow < (simulationData->rows - 1) ? threadEndRow + 1 : threadEndRow;
 
     int rowCount = ((copyEndRow - copyStartRow) + 1);
 
     /**
      * A copy of our area of the tray. This copy will not be modified
      */
-    WorldSlot worldCopy[ rowCount * inputData->columns ];
+    WorldSlot worldSnapshot[ rowCount * simulationData->columns ];
 
 #ifdef VERBOSE
-    printf("Doing copy of world Row: %d to %d (Initial: %d %d, %d)\n", copyStartRow, copyEndRow, startRow, endRow,
-        inputData->rows);
+    printf("Doing copy of world Row: %d to %d (Initial: %d %d, %d)\n", copyStartRow, copyEndRow, threadStartRow, threadEndRow,
+        simulationData->rows);
 #endif
 
-    makeCopyOfPartOfWorld(threadNumber, inputData, threadedData, world, worldCopy, copyStartRow, copyEndRow);
+    copyWorldRegionToBuffer(threadNumber, simulationData, threadedData, world, worldSnapshot, copyStartRow, copyEndRow);
 
 #ifdef VERBOSE
     printf("Done copy on thread %d\n", threadNumber);
@@ -579,51 +579,51 @@ void performGeneration(int threadNumber, int genNumber,
 
     resetThreadConflicts(threadNumber, threadedData);
 
-    performRabbitGeneration(threadNumber, genNumber, inputData, threadedData, world, worldCopy, startRow, endRow);
+    executeRabbitGeneration(threadNumber, genNumber, simulationData, threadedData, world, worldSnapshot, threadStartRow, threadEndRow);
 
     pthread_barrier_wait(&threadedData->barrier);
 
-    makeCopyOfPartOfWorld(threadNumber, inputData, threadedData, world, worldCopy, copyStartRow, copyEndRow);
+    copyWorldRegionToBuffer(threadNumber, simulationData, threadedData, world, worldSnapshot, copyStartRow, copyEndRow);
 
     resetThreadConflicts(threadNumber, threadedData);
 
-    performFoxGeneration(threadNumber, genNumber, inputData, threadedData, world, worldCopy, startRow, endRow);
+    executeFoxGeneration(threadNumber, genNumber, simulationData, threadedData, world, worldSnapshot, threadStartRow, threadEndRow);
 
-    updateCumulativeEntityCounts(threadNumber, inputData, threadRowData, threadedData);
+    updateCumulativeEntityCounts(threadNumber, simulationData, threadRowData, threadedData);
 }
 
 
 /*
- * Handles the movement conflicts of a thread. (each thread calls this for as many conflict lists it has (Usually 2, 1 if at the ends))
+ * Handles the movement conflictArray of a thread. (each thread calls this for as many conflict lists it has (Usually 2, 1 if at the ends))
  */
-void handleConflicts(struct ThreadConflictData* threadConflictData, int conflictCount, Conflict* conflicts) {
+void resolveThreadConflicts(struct ThreadConflictData* conflictContext, int conflictCount, Conflict* conflictArray) {
 #ifdef VERBOSE
-    printf("Thread %d called handle conflicts with size %d\n", threadConflictData->threadNum, conflictCount);
+    printf("Thread %d called handle conflictArray with size %d\n", conflictContext->threadNum, conflictCount);
 #endif
 
-    WorldSlot* world = threadConflictData->world;
+    WorldSlot* world = conflictContext->world;
 
     /*
-     * Go through all the conflicts
+     * Go through all the conflictArray
      */
     for (int i = 0; i < conflictCount; i++) {
 
-        Conflict* conflict = &conflicts[ i ];
+        Conflict* conflict = &conflictArray[ i ];
 
         int row = conflict->newRow, column = conflict->newCol;
 
         int movementResult = -1;
 
-        if (row < threadConflictData->startRow || row > threadConflictData->endRow) {
+        if (row < conflictContext->startRow || row > conflictContext->endRow) {
             fprintf(stderr,
                 "ERROR: ATTEMPTING TO RESOLVE CONFLICT WITH ROW OUTSIDE SCOPE\n Row: %d, Start Row: %d End Row: %d\n",
                 row,
-                threadConflictData->startRow, threadConflictData->endRow);
+                conflictContext->startRow, conflictContext->endRow);
             continue;
         }
 
         WorldSlot* currentEntityInSlot =
-            &world[ PROJECT(threadConflictData->inputData->columns, row, column) ];
+            &world[ PROJECT(conflictContext->inputData->columns, row, column) ];
 
         //Both entities are the same, so we have to follow the rules for eating rabbits.
         if (conflict->slotContent == RABBIT) {
@@ -651,34 +651,34 @@ void handleConflicts(struct ThreadConflictData* threadConflictData, int conflict
         }
 
         if (movementResult == 1) {
-            threadConflictData->inputData->entitiesPerRow[ row ]++;
+            conflictContext->inputData->entitiesPerRow[ row ]++;
         }
     }
 }
 
 
 
-void printPrettyAllGen(FILE* outputFile, InputData* inputData, WorldSlot* world) {
+void displayGenerationState(FILE* outputFile, InputData* simulationData, WorldSlot* world) {
 
-    for (int col = -1; col <= inputData->columns; col++) {
+    for (int col = -1; col <= simulationData->columns; col++) {
         fprintf(outputFile, "-");
     }
 
     fprintf(outputFile, "   ");
 
-    for (int col = -1; col <= inputData->columns; col++) {
+    for (int col = -1; col <= simulationData->columns; col++) {
         fprintf(outputFile, "-");
     }
 
     fprintf(outputFile, " ");
 
-    for (int col = -1; col <= inputData->columns; col++) {
+    for (int col = -1; col <= simulationData->columns; col++) {
         fprintf(outputFile, "-");
     }
 
     fprintf(outputFile, "\n");
 
-    for (int row = 0; row < inputData->rows; row++) {
+    for (int row = 0; row < simulationData->rows; row++) {
 
         for (int i = 0; i < 3; i++) {
 
@@ -691,11 +691,11 @@ void printPrettyAllGen(FILE* outputFile, InputData* inputData, WorldSlot* world)
 
             fprintf(outputFile, "|");
 
-            for (int col = 0; col < inputData->columns; col++) {
+            for (int col = 0; col < simulationData->columns; col++) {
 
-                WorldSlot* slot = &world[ PROJECT(inputData->columns, row, col) ];
+                WorldSlot* currentSlot = &world[ PROJECT(simulationData->columns, row, col) ];
 
-                switch (slot->slotContent) {
+                switch (currentSlot->slotContent) {
 
                 case ROCK:
                     fprintf(outputFile, "*");
@@ -704,13 +704,13 @@ void printPrettyAllGen(FILE* outputFile, InputData* inputData, WorldSlot* world)
                     if (i == 0)
                         fprintf(outputFile, "F");
                     else if (i == 1)
-                        fprintf(outputFile, "%d", slot->entityInfo.foxInfo->currentGenProc);
+                        fprintf(outputFile, "%d", currentSlot->entityInfo.foxInfo->currentGenProc);
                     else if (i == 2)
-                        fprintf(outputFile, "%d", slot->entityInfo.foxInfo->currentGenFood);
+                        fprintf(outputFile, "%d", currentSlot->entityInfo.foxInfo->currentGenFood);
                     break;
                 case RABBIT:
                     if (i == 1)
-                        fprintf(outputFile, "%d", slot->entityInfo.rabbitInfo->currentGen);
+                        fprintf(outputFile, "%d", currentSlot->entityInfo.rabbitInfo->currentGen);
                     else
                         fprintf(outputFile, "R");
                     break;
@@ -723,54 +723,54 @@ void printPrettyAllGen(FILE* outputFile, InputData* inputData, WorldSlot* world)
             fprintf(outputFile, "|");
         }
 
-        // fprintf(outputFile, "%d %d", inputData->entitiesPerRow[row], inputData->entitiesAccumulatedPerRow[row]);
+        // fprintf(outputFile, "%d %d", simulationData->entitiesPerRow[row], simulationData->entitiesAccumulatedPerRow[row]);
 
         fprintf(outputFile, "\n");
     }
 
-    for (int col = -1; col <= inputData->columns; col++) {
+    for (int col = -1; col <= simulationData->columns; col++) {
         fprintf(outputFile, "-");
     }
 
     fprintf(outputFile, "   ");
 
-    for (int col = -1; col <= inputData->columns; col++) {
+    for (int col = -1; col <= simulationData->columns; col++) {
         fprintf(outputFile, "-");
     }
 
     fprintf(outputFile, " ");
 
-    for (int col = -1; col <= inputData->columns; col++) {
+    for (int col = -1; col <= simulationData->columns; col++) {
         fprintf(outputFile, "-");
     }
 
     fprintf(outputFile, "\n");
 }
 
-void printResults(FILE* outputFile, InputData* inputData, WorldSlot* worldSlot) {
+void outputSimulationResults(FILE* outputFile, InputData* simulationData, WorldSlot* worldMatrix) {
 
     int totalEntities = 0;
-    for (int row = 0; row < inputData->rows; row++) {
-        for (int col = 0; col < inputData->columns; col++) {
-            WorldSlot* slot = &worldSlot[ PROJECT(inputData->columns, row, col) ];
-            if (slot->slotContent != EMPTY) {
+    for (int row = 0; row < simulationData->rows; row++) {
+        for (int col = 0; col < simulationData->columns; col++) {
+            WorldSlot* currentSlot = &worldMatrix[ PROJECT(simulationData->columns, row, col) ];
+            if (currentSlot->slotContent != EMPTY) {
                 totalEntities++;
             }
         }
     }
 
-    fprintf(outputFile, "%d %d %d %d %d %d %d\n", inputData->gen_proc_rabbits, inputData->gen_proc_foxes,
-        inputData->gen_food_foxes,
-        0, inputData->rows, inputData->columns, totalEntities);
+    fprintf(outputFile, "%d %d %d %d %d %d %d\n", simulationData->gen_proc_rabbits, simulationData->gen_proc_foxes,
+        simulationData->gen_food_foxes,
+        0, simulationData->rows, simulationData->columns, totalEntities);
 
-    for (int row = 0; row < inputData->rows; row++) {
-        for (int col = 0; col < inputData->columns; col++) {
+    for (int row = 0; row < simulationData->rows; row++) {
+        for (int col = 0; col < simulationData->columns; col++) {
 
-            WorldSlot* slot = &worldSlot[ PROJECT(inputData->columns, row, col) ];
+            WorldSlot* currentSlot = &worldMatrix[ PROJECT(simulationData->columns, row, col) ];
 
-            if (slot->slotContent != EMPTY) {
+            if (currentSlot->slotContent != EMPTY) {
 
-                switch (slot->slotContent) {
+                switch (currentSlot->slotContent) {
                 case RABBIT:
                     fprintf(outputFile, "RABBIT");
                     break;
@@ -792,25 +792,25 @@ void printResults(FILE* outputFile, InputData* inputData, WorldSlot* worldSlot) 
 
 }
 
-void freeWorldMatrix(InputData* data, WorldSlot* worldMatrix) {
-    for (int row = 0; row < data->rows; row++) {
-        for (int col = 0; col < data->columns; col++) {
-            WorldSlot* slot = &worldMatrix[ PROJECT(data->columns, row, col) ];
-            if (slot->slotContent == RABBIT) {
-                destroyRabbitEntity(slot->entityInfo.rabbitInfo);
+void deallocateWorldMatrix(InputData* simulationData, WorldSlot* worldMatrix) {
+    for (int row = 0; row < simulationData->rows; row++) {
+        for (int col = 0; col < simulationData->columns; col++) {
+            WorldSlot* currentSlot = &worldMatrix[ PROJECT(simulationData->columns, row, col) ];
+            if (currentSlot->slotContent == RABBIT) {
+                destroyRabbitEntity(currentSlot->entityInfo.rabbitInfo);
             }
-            else if (slot->slotContent == FOX) {
-                destroyFoxEntity(slot->entityInfo.foxInfo);
+            else if (currentSlot->slotContent == FOX) {
+                destroyFoxEntity(currentSlot->entityInfo.foxInfo);
             }
 
-            releaseMovementDirections(slot->defaultPossibleMoveDirections);
+            releaseMovementDirections(currentSlot->defaultPossibleMoveDirections);
 
         }
     }
 
-    free(data->entitiesPerRow);
-    free(data->entitiesAccumulatedPerRow);
+    free(simulationData->entitiesPerRow);
+    free(simulationData->entitiesAccumulatedPerRow);
 
-    free(data);
+    free(simulationData);
     freeMatrix((void**)&worldMatrix);
 }

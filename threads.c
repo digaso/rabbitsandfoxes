@@ -204,7 +204,7 @@ void synchronizeAndResolveThreadConflicts(struct ThreadConflictData *conflictDat
 
 //            printf("Thread %d called handle conflicts with thread %d\n", conflictData->threadNum,  conflictData->threadNum + 1);
 
-            handleConflicts(conflictData, bottomConflicts->aboveCount, bottomConflicts->above);
+            resolveThreadConflicts(conflictData, bottomConflicts->aboveCount, bottomConflicts->above);
 
         } else if (conflictData->threadNum > 0 && conflictData->threadNum < (conflictData->inputData->threads - 1)) {
 
@@ -234,7 +234,7 @@ void synchronizeAndResolveThreadConflicts(struct ThreadConflictData *conflictDat
                         Conflicts *topConf = threadedData->conflictPerThreads[topThread];
 
 //                        printf("Thread %d called handle conflicts with thread %d\n", conflictData->threadNum,  topThread);
-                        handleConflicts(conflictData, topConf->bellowCount, topConf->bellow);
+                        resolveThreadConflicts(conflictData, topConf->bellowCount, topConf->bellow);
 
                         sems_left--;
                         topDone = 1;
@@ -250,7 +250,7 @@ void synchronizeAndResolveThreadConflicts(struct ThreadConflictData *conflictDat
                         Conflicts *botConf = threadedData->conflictPerThreads[bottThread];
 
 //                        printf("Thread %d called handle conflicts with thread %d\n", conflictData->threadNum,  bottThread);
-                        handleConflicts(conflictData, botConf->aboveCount, botConf->above);
+                        resolveThreadConflicts(conflictData, botConf->aboveCount, botConf->above);
 
                         botDone = 1;
                         sems_left--;
@@ -271,7 +271,7 @@ void synchronizeAndResolveThreadConflicts(struct ThreadConflictData *conflictDat
             Conflicts *conflicts = threadedData->conflictPerThreads[topThread];
 //            printf("Thread %d called handle conflicts with thread %d\n", conflictData->threadNum,  conflictData->threadNum - 1);
 
-            handleConflicts(conflictData, conflicts->bellowCount, conflicts->bellow);
+            resolveThreadConflicts(conflictData, conflicts->bellowCount, conflicts->bellow);
         }
     }
 }
@@ -288,7 +288,6 @@ static void signalCompletionAndWaitForBarrier(int threadNumber, InputData *data,
     //Because the last thread calculates the thread balance, we can instantly start a new generation
     pthread_barrier_wait(&threadedData->barrier);
 
-    //printf("Passed the barrier! Thread %d\n", threadNumber);
 }
 
 static void waitForPreviousThreadCompletion(int threadNumber, InputData *data, struct ThreadedData *threadedData) {
