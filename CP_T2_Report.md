@@ -20,12 +20,14 @@ The algorithm simulates a predator-prey ecosystem where rabbits and foxes intera
 ### Entity Behavior Rules
 
 **Rabbit Behavior:**
+
 - Move to adjacent empty cells (north, east, south, west)
 - Cannot move diagonally or into rocks/occupied cells
 - Reproduce after reaching procreation age
 - Die of old age or when eaten by foxes
 
 **Fox Behavior:**
+
 - Prefer moving toward cells containing rabbits
 - Can move to empty cells if no prey available
 - Require regular feeding to survive (food age tracking)
@@ -34,6 +36,7 @@ The algorithm simulates a predator-prey ecosystem where rabbits and foxes intera
 
 **Conflict Resolution:**
 When multiple entities attempt to move to the same cell, resolution follows priority rules:
+
 - **Rabbits**: Entity closest to procreation survives
 - **Foxes**: Entity closest to procreation survives; if tied, entity furthest from starvation survives
 
@@ -49,57 +52,40 @@ The parallel implementation divides the ecosystem grid by rows, with each thread
 
 The project follows a modular architecture with clear separation of concerns:
 
-| File                     | Purpose                                                    |
-| ------------------------ | ---------------------------------------------------------- |
-| `main.c`                 | Program entry point, command-line argument processing     |
-| `rabbitsandfoxes.h/.c`   | Core simulation logic, generation processing              |
-| `entities.h/.c`          | Entity creation, destruction, and lifecycle management    |
-| `movements.h/.c`         | Movement analysis and conflict detection                  |
-| `threads.h/.c`           | Thread management, synchronization, and parallel control |
-| `matrix_utils.h/.c`      | Grid utilities and memory management                      |
-| `output.h/.c`            | Ecosystem state display and result formatting            |
-| `makefile`               | Build system with compilation and comprehensive testing   |
+| File                   | Purpose                                                  |
+| ---------------------- | -------------------------------------------------------- |
+| `main.c`               | Program entry point, command-line argument processing    |
+| `rabbitsandfoxes.h/.c` | Core simulation logic, generation processing             |
+| `entities.h/.c`        | Entity creation, destruction, and lifecycle management   |
+| `movements.h/.c`       | Movement analysis and conflict detection                 |
+| `threads.h/.c`         | Thread management, synchronization, and parallel control |
+| `matrix_utils.h/.c`    | Grid utilities and memory management                     |
+| `output.h/.c`          | Ecosystem state display and result formatting            |
+| `makefile`             | Build system with compilation and comprehensive testing  |
 
 ## Architecture and Data Structures
 
-### Core Structures
+To ensure memory efficiency and report conciseness, the core data structures are defined below, linking conceptual components to their specific struct implementations.
 
-#### `WorldSlot`
-Represents individual ecosystem positions:
+### 1\. Grid Cell Representation (`WorldSlot`)
 
-```c
-typedef struct WorldSlot_ {
-    SlotContent slotContent;
-    int defaultP;
-    MoveDirection *defaultPossibleMoveDirections;
-    union {
-        FoxInfo *foxInfo;
-        RabbitInfo *rabbitInfo;
-    } entityInfo;
-} WorldSlot;
-```
+The `WorldSlot` struct is optimized for size, representing a single coordinate in the ecosystem.
 
-**Optimization Features:**
-- **Pre-computed valid movements**: Stored per position to avoid runtime checks
-- **Memory-efficient storage**: Shared movement direction arrays for identical positions
-- **Union type safety**: Type-safe entity information storage
+| Component       | Struct Member                   | Purpose                                                                           |
+| :-------------- | :------------------------------ | :-------------------------------------------------------------------------------- |
+| **Type**        | `slotContent`                   | Identifies content: `Empty`, `Rock`, `Rabbit`, or `Fox`.                          |
+| **Move Cache**  | `defaultPossibleMoveDirections` | Pre-computed valid directions (N, S, E, W) to reduce runtime checks.              |
+| **Entity Data** | `entityInfo` (Union)            | Memory-efficient storage. Holds `age` for Rabbits, or `age` + `hunger` for Foxes. |
 
-#### `ThreadedData`
-Complete thread coordination infrastructure:
+### 2\. Thread Synchronization (`ThreadedData`)
 
-```c
-struct ThreadedData {
-    Conflicts **conflictPerThreads;
-    pthread_t *threads;
-    sem_t *threadSemaphores, *precedingSemaphores;
-    pthread_barrier_t barrier;
-};
-```
+The `ThreadedData` struct manages the parallel execution context and inter-thread communication.
 
-**Synchronization Strategy:**
-- **Barrier synchronization**: Ensures all threads complete phases together
-- **Semaphore coordination**: Manages conflict resolution between adjacent threads
-- **Conflict buffers**: Structured storage for cross-boundary movements
+| Primitive      | Struct Member        | Usage                                                                       |
+| :------------- | :------------------- | :-------------------------------------------------------------------------- |
+| **Barriers**   | `barrier`            | Ensures all threads complete a movement phase before starting the next.     |
+| **Semaphores** | `threadSemaphores`   | Controls access to boundary rows between adjacent threads.                  |
+| **Buffers**    | `conflictPerThreads` | Temporary storage for entities attempting to move across thread boundaries. |
 
 ## Core Functions and Algorithm Logic
 
@@ -107,20 +93,21 @@ struct ThreadedData {
 
 **Main Coordination Functions:**
 
-| Function      | Responsibility |
-|---------------|----------------|
-| `runParallelSimulation()` | Thread creation, workload distribution, timing measurement |
-| `executeParallelGeneration()` |          Single generation execution across all threads |
-| `executeWorkerThread()` |  Individual thread execution loop |
+| Function                      | Responsibility                                             |
+| ----------------------------- | ---------------------------------------------------------- |
+| `runParallelSimulation()`     | Thread creation, workload distribution, timing measurement |
+| `executeParallelGeneration()` | Single generation execution across all threads             |
+| `executeWorkerThread()`       | Individual thread execution loop                           |
 
 ### 2. Dynamic Work Distribution Strategy
 
 **Entity-Density Load Balancing:**
-The system assigns work based on entity density rather than fixed row divisions. Binary search finds optimal row boundaries targeting equal entities per thread. 
+The system assigns work based on entity density rather than fixed row divisions. Binary search finds optimal row boundaries targeting equal entities per thread.
 
 ### 3. Generation Processing Pipeline
 
 **Two-Phase Execution:**
+
 1. **Rabbit Phase**: Threads create local snapshots, process rabbit movements, defer cross-boundary conflicts, synchronize
 2. **Fox Phase**: Update snapshots, process fox movements (prioritizing prey), resolve conflicts, update entity counts
 
@@ -135,6 +122,7 @@ Deterministic movement uses `(generation + row + col) % possibleMoves` ensuring 
 ### 5. Inter-Thread Coordination
 
 **Synchronization Strategy:**
+
 - **Global Barriers**: All threads synchronize between rabbit and fox phases
 - **Local Semaphores**: Adjacent threads coordinate boundary conflict resolution
 - **Conflict Buffers**: Thread-safe storage for cross-boundary movements
@@ -153,25 +141,28 @@ Deterministic movement uses `(generation + row + col) % possibleMoves` ensuring 
 
 [**Performance data and measurements will be added here**]
 
-*Performance tables showing execution times for different ecosystem sizes and thread counts*
+_Performance tables showing execution times for different ecosystem sizes and thread counts_
 
 ### Speedup Charts and Efficiency Plots
 
 [**Performance plots and graphs will be inserted here**]
 
-*Visual analysis of parallel performance including:*
-- *Speedup vs Thread Count graphs*
-- *Efficiency analysis charts*
-- *Scalability comparison plots*
+_Visual analysis of parallel performance including:_
+
+- _Speedup vs Thread Count graphs_
+- _Efficiency analysis charts_
+- _Scalability comparison plots_
 
 ### Performance Analysis Discussion
 
 **Optimal Performance Characteristics:**
+
 - **Sweet Spot**: [To be determined from experimental results]
 - **Diminishing Returns**: [Analysis based on measured data]
 - **Scalability Threshold**: [Identified from performance measurements]
 
 **Bottleneck Analysis:**
+
 1. **Small Ecosystems**: Thread overhead vs computation balance
 2. **Medium Ecosystems**: Communication vs computation trade-offs
 3. **Large Ecosystems**: Scalability and efficiency characteristics
@@ -179,16 +170,17 @@ Deterministic movement uses `(generation + row + col) % possibleMoves` ensuring 
 ### Communication Overhead Analysis
 
 The parallel algorithm minimizes communication through:
+
 - **Localized synchronization**: Only adjacent threads communicate
 - **Structured conflict resolution**: Predictable communication patterns
 - **Dynamic load balancing**: Reduces idle time and workload imbalances
-
 
 ## Conclusion
 
 This implementation successfully demonstrates efficient parallel simulation of complex ecosystem dynamics using pthread-based parallelization. The modular design enables flexible testing across different ecosystem sizes and thread configurations while maintaining correctness and performance.
 
 **Future Enhancements:**
+
 - **Hybrid Parallelization**: Combine pthreads with OpenMP for nested parallelism
 - **Non-blocking Communication**: Reduce synchronization overhead through asynchronous message passing
 - **NUMA Optimization**: Thread affinity and memory locality improvements for multi-socket systems
