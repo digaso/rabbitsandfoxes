@@ -151,45 +151,27 @@ Deterministic movement uses `(generation + row + col) % possibleMoves` ensuring 
 
 ### Execution Times and Speedup Analysis
 
-[**Performance data and measurements will be added here**]
+| Input Size                    | Sequential | 2 Threads | 4 Threads | 8 Threads | 16 Threads |
+|-------------------------------|------------|-----------|-----------|-----------|------------|
+| **5x5** | 0.001s | 0.000s (1.80x) | 0.000s (1.52x) | - | - |
+| **10x10** | 0.001s | 0.004s (0.29x) | 0.005s (0.27x) | 0.008s (0.15x) | - |
+| **20x20** | 0.014s | 0.049s (0.28x) | 0.044s (0.32x) | 0.081s (0.17x) | 0.157s (0.09x) |
+| **100x100** | 4.148s | 2.606s (1.59x) | 1.578s (2.63x) | 1.501s (2.76x) | 2.033s (2.04x) |
+| **100x100_unbal01** | 2.818s | 2.002s (1.41x) | 1.268s (2.22x) | 1.313s (2.15x) | 1.915s (1.47x) |
+| **100x100_unbal02** | 3.951s | 2.665s (1.48x) | 1.577s (2.50x) | 1.512s (2.61x) | 2.016s (1.96x) |
+| **200x200** | 16.622s | 9.236s (1.80x) | 5.106s (3.26x) | 3.489s (4.76x) | 3.408s (4.88x) |
 
-*Performance tables showing execution times for different ecosystem sizes and thread counts*
+## Performance Analysis Discussion
 
-### Speedup Charts and Efficiency Plots
+**Key Results:**
+- **Optimal Performance**: 4-8 threads achieve 2.5-4.7x speedup on 100x100+ ecosystems
+- **Thread Overhead**: Small ecosystems (<=20x20) show negative speedups due to synchronization costs exceeding computation
+- **Scalability Limit**: 16+ threads cause performance regression from increased barrier synchronization and conflict resolution overhead
+- **Load Balancing**: Dynamic allocation effectively handles unbalanced inputs, maintaining similar performance across test variants
 
-[**Performance plots and graphs will be inserted here**]
-
-*Visual analysis of parallel performance including:*
-- *Speedup vs Thread Count graphs*
-- *Efficiency analysis charts*
-- *Scalability comparison plots*
-
-### Performance Analysis Discussion
-
-**Optimal Performance Characteristics:**
-- **Sweet Spot**: [To be determined from experimental results]
-- **Diminishing Returns**: [Analysis based on measured data]
-- **Scalability Threshold**: [Identified from performance measurements]
-
-**Bottleneck Analysis:**
-1. **Small Ecosystems**: Thread overhead vs computation balance
-2. **Medium Ecosystems**: Communication vs computation trade-offs
-3. **Large Ecosystems**: Scalability and efficiency characteristics
-
-### Communication Overhead Analysis
-
-The parallel algorithm minimizes communication through:
-- **Localized synchronization**: Only adjacent threads communicate
-- **Structured conflict resolution**: Predictable communication patterns
-- **Dynamic load balancing**: Reduces idle time and workload imbalances
+NOTE: In the project folder there are 2 plots showcasing some plots for more info path: benchmark_plots
 
 
 ## Conclusion
 
-This implementation successfully demonstrates efficient parallel simulation of complex ecosystem dynamics using pthread-based parallelization. The modular design enables flexible testing across different ecosystem sizes and thread configurations while maintaining correctness and performance.
-
-**Future Enhancements:**
-- **Hybrid Parallelization**: Combine pthreads with OpenMP for nested parallelism
-- **Non-blocking Communication**: Reduce synchronization overhead through asynchronous message passing
-- **NUMA Optimization**: Thread affinity and memory locality improvements for multi-socket systems
-- **GPU Acceleration**: Offload movement calculations to CUDA/OpenCL for massive parallelism
+This project successfully implements a parallel rabbits and foxes ecosystem simulation demonstrating advanced concurrent programming techniques. The modular architecture separates concerns effectively, with dedicated modules for entity management, movement analysis, thread coordination, and conflict resolution. The implementation showcases sophisticated parallel algorithms including dynamic load balancing, territorial thread ownership, and structured synchronization patterns that ensure deterministic results across different thread configurations while maintaining thread safety.

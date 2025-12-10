@@ -17,7 +17,7 @@ from pathlib import Path
 
 # Configuration
 INPUT_SIZES = ['5x5', '10x10', '20x20', '100x100', '100x100_unbal01', '100x100_unbal02', '200x200']
-THREAD_COUNTS = [0, 2, 4, 8, 16, 25]  # 0 = sequential
+THREAD_COUNTS = [0, 2, 4, 8, 16]  # 0 = sequential
 EXECUTABLE = './ecosystem'
 ECOSYSTEM_DIR = 'ecosystem_examples'
 RESULTS_FILE = 'benchmark_results.json'
@@ -167,10 +167,10 @@ class BenchmarkRunner:
             '5x5': 4,           # 5 rows -> max 4 threads  
             '10x10': 8,         # 10 rows -> max 8 threads
             '20x20': 16,        # 20 rows -> max 16 threads
-            '100x100': 25,      # 100 rows -> max 25 threads (from makefile)
-            '100x100_unbal01': 25,
-            '100x100_unbal02': 25, 
-            '200x200': 25       # 200 rows -> max 25 threads
+            '100x100': 16,      # 100 rows -> max 16 threads
+            '100x100_unbal01': 16,
+            '100x100_unbal02': 16, 
+            '200x200': 16       # 200 rows -> max 16 threads
         }
         return size_map.get(input_size, 50)
     
@@ -483,9 +483,9 @@ class BenchmarkRunner:
         plt.grid(True, alpha=0.3)
         
         # Set proper tick labels
-        thread_ticks = [1, 2, 4, 8, 16, 25]
+        thread_ticks = [1, 2, 4, 8, 16]
         plt.xticks(thread_ticks, [str(t) for t in thread_ticks])
-        velocity_ticks = [1, 2, 4, 8, 16, 25]
+        velocity_ticks = [1, 2, 4, 8, 16]
         plt.yticks(velocity_ticks, [f'{t}x' for t in velocity_ticks])
         
         plt.tight_layout()
