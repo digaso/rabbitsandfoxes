@@ -38,7 +38,7 @@ makeCopyOfPartOfWorld(int threadNumber, InputData* data, struct ThreadedData* th
 
     //    pthread_barrier_wait(&threadedData->barrier);
 
-        //postAndWaitForSurrounding(threadNumber, data, threadedData);
+        //synchronizeWithAdjacentThreads(threadNumber, data, threadedData);
 
     int rowCount = (copyEndRow - copyStartRow) + 1;
 
@@ -337,7 +337,7 @@ performRabbitGeneration(int threadNumber, int genNumber, InputData* inputData, s
     struct ThreadConflictData conflictData = { threadNumber, startRow, endRow, inputData,
                                               world, threadedData };
 
-    synchronizeThreadAndSolveConflicts(&conflictData);
+    synchronizeAndResolveThreadConflicts(&conflictData);
 }
 
 
@@ -509,7 +509,7 @@ performFoxGeneration(int threadNumber, int genNumber, InputData* inputData, stru
     struct ThreadConflictData conflictData = { threadNumber, startRow, endRow, inputData,
                                               world, threadedData };
 
-    synchronizeThreadAndSolveConflicts(&conflictData);
+    synchronizeAndResolveThreadConflicts(&conflictData);
 }
 
 void performSequentialGeneration(int genNumber, InputData* inputData, WorldSlot* world) {

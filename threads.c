@@ -186,7 +186,7 @@ void destroyConflict(Conflict *conflict) {
     }
 }
 
-void synchronizeThreadAndSolveConflicts(struct ThreadConflictData *conflictData) {
+void synchronizeAndResolveThreadConflicts(struct ThreadConflictData *conflictData) {
     if (conflictData->inputData->threads > 1) {
 
         struct ThreadedData *threadedData = conflictData->threadedData;
@@ -277,7 +277,7 @@ void synchronizeThreadAndSolveConflicts(struct ThreadConflictData *conflictData)
 }
 
 
-static void postForNextThread(int threadNumber, InputData *data, struct ThreadedData *threadedData) {
+static void signalCompletionAndWaitForBarrier(int threadNumber, InputData *data, struct ThreadedData *threadedData) {
     if (threadNumber < data->threads - 1) {
         sem_t *our_sem = &threadedData->precedingSemaphores[threadNumber];
 
@@ -291,7 +291,7 @@ static void postForNextThread(int threadNumber, InputData *data, struct Threaded
     //printf("Passed the barrier! Thread %d\n", threadNumber);
 }
 
-static void waitForPrecedingThread(int threadNumber, InputData *data, struct ThreadedData *threadedData) {
+static void waitForPreviousThreadCompletion(int threadNumber, InputData *data, struct ThreadedData *threadedData) {
 
     if (threadNumber > 0) {
         sem_t *topSem = &threadedData->precedingSemaphores[threadNumber - 1];
@@ -304,7 +304,7 @@ static void waitForPrecedingThread(int threadNumber, InputData *data, struct Thr
 void updateCumulativeEntityCounts(int threadIndex, InputData *worldData, ThreadRowData *threadAssignments,
                                    struct ThreadedData *threadSystem) {
     // Wait for previous thread to complete its cumulative calculation
-    waitForPrecedingThread(threadIndex, worldData, threadSystem);
+    waitForPreviousThreadCompletion(threadIndex, worldData, threadSystem);
 
     ThreadRowData *currentThreadRows = &threadAssignments[threadIndex];
     int startRow = currentThreadRows->startRow;
@@ -322,11 +322,11 @@ void updateCumulativeEntityCounts(int threadIndex, InputData *worldData, ThreadR
     }
 
     // Signal completion and wait for other threads
-    postForNextThread(threadIndex, worldData, threadSystem);
+    signalCompletionAndWaitForBarrier(threadIndex, worldData, threadSystem);
 }
 
 
-void postAndWaitForSurrounding(int threadNumber, InputData *data, struct ThreadedData *threadedData) {
+void synchronizeWithAdjacentThreads(int threadNumber, InputData *data, struct ThreadedData *threadedData) {
 
     if (data->threads < 2) return;
 

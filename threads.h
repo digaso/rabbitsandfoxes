@@ -61,7 +61,7 @@ typedef struct ThreadRowData_ {
 
 void initializeThreadingSystem(int threadCount, InputData *worldData, struct ThreadedData *threadSystem);
 
-void postAndWaitForSurrounding(int threadNumber, InputData *data, struct ThreadedData *threadedData);
+void synchronizeWithAdjacentThreads(int threadNumber, InputData *data, struct ThreadedData *threadedData);
 
 void createAndStoreConflict(Conflicts *threadConflicts, int isAboveThread, int targetRow, int targetCol, WorldSlot *sourceSlot);
 
@@ -69,7 +69,7 @@ int validateThreadConfiguration(InputData *simulationData);
 
 void distributeWorkloadAcrossThreads(int threadCount, ThreadRowData *threadAssignments, InputData *worldData);
 
-void synchronizeThreadAndSolveConflicts(struct ThreadConflictData *conflictData);
+void synchronizeAndResolveThreadConflicts(struct ThreadConflictData *conflictData);
 
 void updateCumulativeEntityCounts(int threadIndex, InputData *worldData, ThreadRowData *threadAssignments,
                                    struct ThreadedData *threadSystem);
