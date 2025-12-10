@@ -232,7 +232,7 @@ static void tickRabbit(int genNumber, int startRow, int endRow, int row, int col
             //If the rabbit is old enough to procriate we need to leave a rabbit at that location
 
             //Initialize a new rabbit for that position
-            realSlot->entityInfo.rabbitInfo = initRabbitInfo();
+            realSlot->entityInfo.rabbitInfo = createRabbitEntity();
             realSlot->entityInfo.rabbitInfo->genUpdated = genNumber;
             rabbitInfo->genUpdated = genNumber;
             rabbitInfo->prevGen = 0;
@@ -256,7 +256,7 @@ static void tickRabbit(int genNumber, int startRow, int endRow, int row, int col
         else {
             WorldSlot* newSlot = &world[ PROJECT(inputData->columns, newRow, newCol) ];
 
-            movementResult = handleMoveRabbit(rabbitInfo, newSlot);
+            movementResult = processRabbitMovement(rabbitInfo, newSlot);
 
             if (movementResult == 1) {
                 inputData->entitiesPerRow[ newRow ]++;
@@ -280,7 +280,7 @@ static void tickRabbit(int genNumber, int startRow, int endRow, int row, int col
     }
 
     if (!movementResult) {
-        freeRabbitInfo(rabbitInfo);
+        destroyRabbitEntity(rabbitInfo);
     }
 }
 
@@ -372,7 +372,7 @@ static void tickFox(int genNumber, int startRow, int endRow, int row, int col, W
             printf("Fox %p on %d %d Starved to death\n", foxInfo, row, col);
 #endif
 
-            freeFoxInfo(foxInfo);
+            destroyFoxEntity(foxInfo);
 
             return;
         }
@@ -390,7 +390,7 @@ static void tickFox(int genNumber, int startRow, int endRow, int row, int col, W
         if (foxInfo->currentGenProc >= inputData->gen_proc_foxes) {
             realSlot->slotContent = FOX;
 
-            realSlot->entityInfo.foxInfo = initFoxInfo();
+            realSlot->entityInfo.foxInfo = createFoxEntity();
             realSlot->entityInfo.foxInfo->genUpdated = genNumber;
 
             inputData->entitiesPerRow[ row ]++;
@@ -432,7 +432,7 @@ static void tickFox(int genNumber, int startRow, int endRow, int row, int col, W
         else {
             WorldSlot* newSlot = &world[ PROJECT(inputData->columns, newRow, newCol) ];
 
-            foxMovementResult = handleMoveFox(foxInfo, newSlot);
+            foxMovementResult = processFoxMovement(foxInfo, newSlot);
             //We only increment the rows under our control, to avoid concurrency issues
             if (foxMovementResult == 1) {
                 inputData->entitiesPerRow[ newRow ]++;
@@ -467,7 +467,7 @@ static void tickFox(int genNumber, int startRow, int endRow, int row, int col, W
     }
     else if (foxMovementResult == 0) {
         //If the move failed kill the fox
-        freeFoxInfo(foxInfo);
+        destroyFoxEntity(foxInfo);
     }
 }
 
@@ -628,16 +628,16 @@ void handleConflicts(struct ThreadConflictData* threadConflictData, int conflict
         //Both entities are the same, so we have to follow the rules for eating rabbits.
         if (conflict->slotContent == RABBIT) {
 
-            movementResult = handleMoveRabbit((RabbitInfo*)conflict->data, currentEntityInSlot);
+            movementResult = processRabbitMovement((RabbitInfo*)conflict->data, currentEntityInSlot);
 
             if (movementResult == 0) {
-                freeRabbitInfo(conflict->data);
+                destroyRabbitEntity(conflict->data);
             }
 
         }
         else if (conflict->slotContent == FOX) {
 
-            movementResult = handleMoveFox(conflict->data, currentEntityInSlot);
+            movementResult = processFoxMovement(conflict->data, currentEntityInSlot);
 
             if (movementResult == 2) {
                 //This happens after the gen food has been incremented, so if we set it to 0 here
@@ -645,7 +645,7 @@ void handleConflicts(struct ThreadConflictData* threadConflictData, int conflict
                 ((FoxInfo*)conflict->data)->currentGenFood = 0;
             }
             else if (movementResult == 0) {
-                freeFoxInfo(conflict->data);
+                destroyFoxEntity(conflict->data);
             }
 
         }
@@ -797,10 +797,10 @@ void freeWorldMatrix(InputData* data, WorldSlot* worldMatrix) {
         for (int col = 0; col < data->columns; col++) {
             WorldSlot* slot = &worldMatrix[ PROJECT(data->columns, row, col) ];
             if (slot->slotContent == RABBIT) {
-                freeRabbitInfo(slot->entityInfo.rabbitInfo);
+                destroyRabbitEntity(slot->entityInfo.rabbitInfo);
             }
             else if (slot->slotContent == FOX) {
-                freeFoxInfo(slot->entityInfo.foxInfo);
+                destroyFoxEntity(slot->entityInfo.foxInfo);
             }
 
             freeMovementForSlot(slot->defaultPossibleMoveDirections);

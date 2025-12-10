@@ -2,149 +2,195 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-FoxInfo* initFoxInfo(void) {
-    FoxInfo* foxInfo = malloc(sizeof(FoxInfo));
-    foxInfo->currentGenFood = 0;
-    foxInfo->currentGenProc = 0;
-    foxInfo->genUpdated = 0;
-    foxInfo->prevGenProc = 0;
-    return foxInfo;
-}
-
-RabbitInfo* initRabbitInfo(void) {
-    RabbitInfo* rabbitInfo = malloc(sizeof(RabbitInfo));
-    rabbitInfo->currentGen = 0;
-    rabbitInfo->genUpdated = 0;
-    rabbitInfo->prevGen = 0;
-    return rabbitInfo;
-}
-
-void freeFoxInfo(FoxInfo* foxInfo) {
-    free(foxInfo);
-}
-
-void freeRabbitInfo(RabbitInfo* rabbitInfo) {
-    free(rabbitInfo);
-}
-
-int handleMoveFox(FoxInfo* foxInfo, WorldSlot* newSlot) {
-    if (newSlot->slotContent == FOX) {
-        int foxInfoAge, newSlotAge;
-
-        if (foxInfo->genUpdated > newSlot->entityInfo.rabbitInfo->genUpdated) {
-            foxInfoAge = foxInfo->currentGenProc;
-            newSlotAge = newSlot->entityInfo.foxInfo->currentGenProc + 1;
-        }
-        else if (foxInfo->genUpdated < newSlot->entityInfo.rabbitInfo->genUpdated) {
-            foxInfoAge = foxInfo->currentGenProc + 1;
-            newSlotAge = newSlot->entityInfo.foxInfo->currentGenProc;
-        }
-        else {
-            foxInfoAge = foxInfo->currentGenProc;
-            newSlotAge = newSlot->entityInfo.rabbitInfo->currentGen;
-        }
-
-#ifdef VERBOSE
-        printf("Fox conflict with fox %p, current fox in slot is %p\n", foxInfo, newSlot->entityInfo.foxInfo);
-#endif
-
-        if (foxInfoAge > newSlotAge) {
-#ifdef VERBOSE
-            printf("Fox jumping in %p has larger gen proc (%d vs %d)\n", foxInfo, foxInfo->currentGenProc,
-                newSlot->entityInfo.foxInfo->currentGenProc);
-#endif
-            freeFoxInfo(newSlot->entityInfo.foxInfo);
-            newSlot->entityInfo.foxInfo = foxInfo;
-            return 1;
-        }
-        else if (foxInfoAge == newSlotAge) {
-            if (foxInfo->currentGenFood >= newSlot->entityInfo.foxInfo->currentGenFood) {
-#ifdef VERBOSE
-                printf("Fox %p has been killed by gen food (FoxInfo: %d vs %d)\n", foxInfo,
-                    foxInfo->currentGenFood, newSlot->entityInfo.foxInfo->currentGenFood);
-#endif
-                return 0;
-            }
-            else {
-#ifdef VERBOSE
-                printf("Fox %p has been killed by gen food (FoxInfo: %d vs %d)\n", newSlot->entityInfo.foxInfo,
-                    foxInfo->currentGenFood, newSlot->entityInfo.foxInfo->currentGenFood);
-#endif
-                freeFoxInfo(newSlot->entityInfo.foxInfo);
-                newSlot->entityInfo.foxInfo = foxInfo;
-                return 1;
-            }
-        }
-        else {
-#ifdef VERBOSE
-            printf("Fox already there %p has larger gen proc (%d vs %d)\n", newSlot->entityInfo.foxInfo,
-                foxInfoAge, newSlotAge);
-#endif
-            return 0;
-        }
+FoxInfo* createFoxEntity(void) {
+    FoxInfo* newFox = malloc(sizeof(FoxInfo));
+    
+    if (newFox == NULL) {
+        return NULL;
     }
-    else if (newSlot->slotContent == RABBIT) {
-        newSlot->slotContent = FOX;
-#ifdef VERBOSE
-        printf("Fox %p Killed Rabbit %p\n", foxInfo, newSlot->entityInfo.rabbitInfo);
-#endif
-        freeRabbitInfo(newSlot->entityInfo.rabbitInfo);
-        newSlot->entityInfo.foxInfo = foxInfo;
-        return 2;
+    
+    // Initialize fox state - newborn fox
+    newFox->currentGenFood = 0;     // Generations since last meal
+    newFox->currentGenProc = 0;     // Generations since birth
+    newFox->genUpdated = 0;         // Last generation updated
+    newFox->prevGenProc = 0;        // Previous generation proc count
+    
+    return newFox;
+}
+
+RabbitInfo* createRabbitEntity(void) {
+    RabbitInfo* newRabbit = malloc(sizeof(RabbitInfo));
+    
+    if (newRabbit == NULL) {
+        return NULL;
     }
-    else if (newSlot->slotContent == EMPTY) {
-        newSlot->slotContent = FOX;
-        newSlot->entityInfo.foxInfo = foxInfo;
-        return 1;
+    
+    // Initialize rabbit state - newborn rabbit
+    newRabbit->currentGen = 0;      // Generations since birth
+    newRabbit->genUpdated = 0;      // Last generation updated
+    newRabbit->prevGen = 0;         // Previous generation count
+    
+    return newRabbit;
+}
+
+void destroyFoxEntity(FoxInfo* foxEntity) {
+    if (foxEntity != NULL) {
+        free(foxEntity);
+    }
+}
+
+void destroyRabbitEntity(RabbitInfo* rabbitEntity) {
+    if (rabbitEntity != NULL) {
+        free(rabbitEntity);
+    }
+}
+
+// Movement outcome constants
+#define MOVEMENT_FAILED 0
+#define MOVEMENT_SUCCESS 1  
+#define MOVEMENT_KILLED_PREY 2
+#define MOVEMENT_ERROR -1
+
+static int calculateFoxAge(FoxInfo* fox, FoxInfo* otherFox) {
+    if (fox->genUpdated > otherFox->genUpdated) {
+        return fox->currentGenProc;
+    }
+    else if (fox->genUpdated < otherFox->genUpdated) {
+        return fox->currentGenProc + 1;
     }
     else {
-        fprintf(stderr, "TRIED MOVING A FOX TO A ROCK\n");
+        return fox->currentGenProc;
     }
-    return -1;
 }
 
-int handleMoveRabbit(RabbitInfo* rabbitInfo, WorldSlot* newSlot) {
-    if (newSlot->slotContent == RABBIT) {
-        int rabbitInfoAge, newSlotAge;
-
-        if (rabbitInfo->genUpdated > newSlot->entityInfo.rabbitInfo->genUpdated) {
-            rabbitInfoAge = rabbitInfo->currentGen;
-            newSlotAge = newSlot->entityInfo.rabbitInfo->currentGen + 1;
-        }
-        else if (rabbitInfo->genUpdated < newSlot->entityInfo.rabbitInfo->genUpdated) {
-            rabbitInfoAge = rabbitInfo->currentGen + 1;
-            newSlotAge = newSlot->entityInfo.rabbitInfo->currentGen;
-        }
-        else {
-            rabbitInfoAge = rabbitInfo->currentGen;
-            newSlotAge = newSlot->entityInfo.rabbitInfo->currentGen;
-        }
-
+static int resolveFoxConflict(FoxInfo* movingFox, FoxInfo* occupyingFox) {
+    int movingFoxAge = calculateFoxAge(movingFox, occupyingFox);
+    int occupyingFoxAge = calculateFoxAge(occupyingFox, movingFox);
+    
 #ifdef VERBOSE
-        printf("Two rabbits collided, rabbitInfo: %p vs newSlot: %p Age: %d vs %d (%d %d %d, %d %d %d)\n", rabbitInfo,
-            newSlot->entityInfo.rabbitInfo,
-            rabbitInfoAge, newSlotAge, rabbitInfo->currentGen, rabbitInfo->genUpdated, rabbitInfo->prevGen,
-            newSlot->entityInfo.rabbitInfo->currentGen,
-            newSlot->entityInfo.rabbitInfo->genUpdated,
-            newSlot->entityInfo.rabbitInfo->prevGen);
+    printf("Fox conflict: moving fox %p vs occupying fox %p\n", movingFox, occupyingFox);
 #endif
-
-        if (rabbitInfoAge > newSlotAge) {
-            freeRabbitInfo(newSlot->entityInfo.rabbitInfo);
-            newSlot->entityInfo.rabbitInfo = rabbitInfo;
-            return 1;
+    
+    if (movingFoxAge > occupyingFoxAge) {
+#ifdef VERBOSE
+        printf("Moving fox %p wins with age %d vs %d\n", movingFox, movingFoxAge, occupyingFoxAge);
+#endif
+        return MOVEMENT_SUCCESS;
+    }
+    else if (movingFoxAge == occupyingFoxAge) {
+        // Same age - resolve by food level (higher = less hungry = stronger)
+        if (movingFox->currentGenFood < occupyingFox->currentGenFood) {
+#ifdef VERBOSE
+            printf("Moving fox %p wins with food level %d vs %d\n", movingFox, 
+                   movingFox->currentGenFood, occupyingFox->currentGenFood);
+#endif
+            return MOVEMENT_SUCCESS;
         }
         else {
-            return 0;
+#ifdef VERBOSE
+            printf("Occupying fox %p wins with food level %d vs %d\n", occupyingFox,
+                   occupyingFox->currentGenFood, movingFox->currentGenFood);
+#endif
+            return MOVEMENT_FAILED;
         }
-    }
-    else if (newSlot->slotContent == EMPTY) {
-        newSlot->slotContent = RABBIT;
-        newSlot->entityInfo.rabbitInfo = rabbitInfo;
-        return 1;
     }
     else {
-        fprintf(stdout, "TRIED MOVING RABBIT TO %d\n", newSlot->slotContent);
+#ifdef VERBOSE
+        printf("Occupying fox %p wins with age %d vs %d\n", occupyingFox, occupyingFoxAge, movingFoxAge);
+#endif
+        return MOVEMENT_FAILED;
     }
-    return -1;
+}
+
+int processFoxMovement(FoxInfo* foxEntity, WorldSlot* targetSlot) {
+    SlotContent targetType = targetSlot->slotContent;
+    
+    switch (targetType) {
+        case FOX: {
+            FoxInfo* occupyingFox = targetSlot->entityInfo.foxInfo;
+            int conflictResult = resolveFoxConflict(foxEntity, occupyingFox);
+            
+            if (conflictResult == MOVEMENT_SUCCESS) {
+                destroyFoxEntity(occupyingFox);
+                targetSlot->entityInfo.foxInfo = foxEntity;
+                return MOVEMENT_SUCCESS;
+            }
+            return MOVEMENT_FAILED;
+        }
+        
+        case RABBIT:
+#ifdef VERBOSE
+            printf("Fox %p killed rabbit %p\n", foxEntity, targetSlot->entityInfo.rabbitInfo);
+#endif
+            destroyRabbitEntity(targetSlot->entityInfo.rabbitInfo);
+            targetSlot->slotContent = FOX;
+            targetSlot->entityInfo.foxInfo = foxEntity;
+            return MOVEMENT_KILLED_PREY;
+            
+        case EMPTY:
+            targetSlot->slotContent = FOX;
+            targetSlot->entityInfo.foxInfo = foxEntity;
+            return MOVEMENT_SUCCESS;
+            
+        case ROCK:
+        default:
+            fprintf(stderr, "ERROR: Attempted to move fox to invalid location (content: %d)\n", targetType);
+            return MOVEMENT_ERROR;
+    }
+}
+
+static int calculateRabbitAge(RabbitInfo* rabbit, RabbitInfo* otherRabbit) {
+    if (rabbit->genUpdated > otherRabbit->genUpdated) {
+        return rabbit->currentGen;
+    }
+    else if (rabbit->genUpdated < otherRabbit->genUpdated) {
+        return rabbit->currentGen + 1;
+    }
+    else {
+        return rabbit->currentGen;
+    }
+}
+
+static int resolveRabbitConflict(RabbitInfo* movingRabbit, RabbitInfo* occupyingRabbit) {
+    int movingRabbitAge = calculateRabbitAge(movingRabbit, occupyingRabbit);
+    int occupyingRabbitAge = calculateRabbitAge(occupyingRabbit, movingRabbit);
+    
+#ifdef VERBOSE
+    printf("Rabbit conflict: moving %p (age %d) vs occupying %p (age %d) - details: (%d %d %d) vs (%d %d %d)\n",
+           movingRabbit, movingRabbitAge, occupyingRabbit, occupyingRabbitAge,
+           movingRabbit->currentGen, movingRabbit->genUpdated, movingRabbit->prevGen,
+           occupyingRabbit->currentGen, occupyingRabbit->genUpdated, occupyingRabbit->prevGen);
+#endif
+    
+    // Older rabbit wins (survival of the fittest - experience matters)
+    return (movingRabbitAge > occupyingRabbitAge) ? MOVEMENT_SUCCESS : MOVEMENT_FAILED;
+}
+
+int processRabbitMovement(RabbitInfo* rabbitEntity, WorldSlot* targetSlot) {
+    SlotContent targetType = targetSlot->slotContent;
+    
+    switch (targetType) {
+        case RABBIT: {
+            RabbitInfo* occupyingRabbit = targetSlot->entityInfo.rabbitInfo;
+            int conflictResult = resolveRabbitConflict(rabbitEntity, occupyingRabbit);
+            
+            if (conflictResult == MOVEMENT_SUCCESS) {
+                destroyRabbitEntity(occupyingRabbit);
+                targetSlot->entityInfo.rabbitInfo = rabbitEntity;
+                return MOVEMENT_SUCCESS;
+            }
+            return MOVEMENT_FAILED;
+        }
+        
+        case EMPTY:
+            targetSlot->slotContent = RABBIT;
+            targetSlot->entityInfo.rabbitInfo = rabbitEntity;
+            return MOVEMENT_SUCCESS;
+            
+        case FOX:
+        case ROCK:
+        default:
+            fprintf(stderr, "ERROR: Attempted to move rabbit to invalid location (content: %d)\n", targetType);
+            return MOVEMENT_ERROR;
+    }
 }

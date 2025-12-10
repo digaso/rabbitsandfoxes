@@ -94,10 +94,10 @@ static SlotContent parseEntityType(const char* entityName) {
 static void initializeEntityInfo(WorldSlot* slot) {
     switch (slot->slotContent) {
         case FOX:
-            slot->entityInfo.foxInfo = initFoxInfo();
+            slot->entityInfo.foxInfo = createFoxEntity();
             break;
         case RABBIT:
-            slot->entityInfo.rabbitInfo = initRabbitInfo();
+            slot->entityInfo.rabbitInfo = createRabbitEntity();
             break;
         case ROCK:
         case EMPTY:

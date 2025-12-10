@@ -4,13 +4,13 @@
 #include "rabbitsandfoxes.h"
 
 // Entity initialization and cleanup
-FoxInfo* initFoxInfo(void);
-RabbitInfo* initRabbitInfo(void);
-void freeFoxInfo(FoxInfo* foxInfo);
-void freeRabbitInfo(RabbitInfo* rabbitInfo);
+FoxInfo* createFoxEntity(void);
+RabbitInfo* createRabbitEntity(void);
+void destroyFoxEntity(FoxInfo* foxEntity);
+void destroyRabbitEntity(RabbitInfo* rabbitEntity);
 
 // Entity movement handling
-int handleMoveFox(FoxInfo* foxInfo, WorldSlot* newSlot);
-int handleMoveRabbit(RabbitInfo* rabbitInfo, WorldSlot* newSlot);
+int processFoxMovement(FoxInfo* foxEntity, WorldSlot* targetSlot);
+int processRabbitMovement(RabbitInfo* rabbitEntity, WorldSlot* targetSlot);
 
 #endif // ENTITIES_H
