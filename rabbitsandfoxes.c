@@ -61,7 +61,7 @@ void executeSequentialThread(FILE* inputFile, FILE* outputFile) {
 
     struct ThreadedData* threadedData = malloc(sizeof(struct ThreadedData));
 
-    initThreadData(data->threads, data, threadedData);
+    initializeThreadingSystem(data->threads, data, threadedData);
 
     WorldSlot* world = initializeWorldMatrix(data);
 
@@ -133,13 +133,13 @@ void executeWithThreadCount(int threadCount, FILE* inputFile, FILE* outputFile) 
 
     struct ThreadedData* threadedData = malloc(sizeof(struct ThreadedData));
 
-    initThreadData(data->threads, data, threadedData);
+    initializeThreadingSystem(data->threads, data, threadedData);
 
     WorldSlot* world = initializeWorldMatrix(data);
 
     loadWorldEntities(inputFile, data, world);
 
-    if (!verifyThreadInputs(data)) {
+    if (!validateThreadConfiguration(data)) {
         exit(1);
     }
 
@@ -151,7 +151,7 @@ void executeWithThreadCount(int threadCount, FILE* inputFile, FILE* outputFile) 
 
     gettimeofday(&start, NULL);
 
-    calculateOptimalThreadBalance(threadCount, threadRowData, data);
+    distributeWorkloadAcrossThreads(threadCount, threadRowData, data);
 
     for (int thread = 0; thread < threadCount; thread++) {
 
@@ -193,7 +193,7 @@ void executeWithThreadCount(int threadCount, FILE* inputFile, FILE* outputFile) 
     fflush(outputFile);
     printf("Took %ld microseconds\n", micros);
     freeWorldMatrix(data, world);
-    freeThreadData(threadCount, threadedData);
+    destroyThreadingSystem(threadCount, threadedData);
 
 }
 
@@ -250,7 +250,7 @@ static void tickRabbit(int genNumber, int startRow, int endRow, int row, int col
         if (newRow < startRow || newRow > endRow) {
             //Conflict, we have to access another thread's memory space, create a conflict
             //And store it in our conflict list
-            initAndAppendConflict(conflictsForThread, newRow < startRow, newRow, newCol, slot);
+            createAndStoreConflict(conflictsForThread, newRow < startRow, newRow, newCol, slot);
 
         }
         else {
@@ -427,7 +427,7 @@ static void tickFox(int genNumber, int startRow, int endRow, int row, int col, W
         if (newRow < startRow || newRow > endRow) {
             //Conflict, we have to access another thread's memory space, create a conflict
             //And store it in our conflict list
-            initAndAppendConflict(conflictsForThread, newRow < startRow, newRow, newCol, slot);
+            createAndStoreConflict(conflictsForThread, newRow < startRow, newRow, newCol, slot);
         }
         else {
             WorldSlot* newSlot = &world[ PROJECT(inputData->columns, newRow, newCol) ];
@@ -577,7 +577,7 @@ void performGeneration(int threadNumber, int genNumber,
     printf("Done copy on thread %d\n", threadNumber);
 #endif
 
-    clearConflictsForThread(threadNumber, threadedData);
+    resetThreadConflicts(threadNumber, threadedData);
 
     performRabbitGeneration(threadNumber, genNumber, inputData, threadedData, world, worldCopy, startRow, endRow);
 
@@ -585,11 +585,11 @@ void performGeneration(int threadNumber, int genNumber,
 
     makeCopyOfPartOfWorld(threadNumber, inputData, threadedData, world, worldCopy, copyStartRow, copyEndRow);
 
-    clearConflictsForThread(threadNumber, threadedData);
+    resetThreadConflicts(threadNumber, threadedData);
 
     performFoxGeneration(threadNumber, genNumber, inputData, threadedData, world, worldCopy, startRow, endRow);
 
-    calculateAccumulatedEntitiesForThread(threadNumber, inputData, threadRowData, threadedData);
+    updateCumulativeEntityCounts(threadNumber, inputData, threadRowData, threadedData);
 }
 
 

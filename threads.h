@@ -59,25 +59,25 @@ typedef struct ThreadRowData_ {
 
 } ThreadRowData;
 
-void initThreadData(int threadCount, InputData *data, struct ThreadedData *destination);
+void initializeThreadingSystem(int threadCount, InputData *worldData, struct ThreadedData *threadSystem);
 
 void postAndWaitForSurrounding(int threadNumber, InputData *data, struct ThreadedData *threadedData);
 
-void initAndAppendConflict(Conflicts *conflicts, int above, int newRow, int newCol, WorldSlot *slot);
+void createAndStoreConflict(Conflicts *threadConflicts, int isAboveThread, int targetRow, int targetCol, WorldSlot *sourceSlot);
 
-int verifyThreadInputs(InputData *inputData);
+int validateThreadConfiguration(InputData *simulationData);
 
-void calculateOptimalThreadBalance(int threadCount, ThreadRowData *threadDatas, InputData *inputData);
+void distributeWorkloadAcrossThreads(int threadCount, ThreadRowData *threadAssignments, InputData *worldData);
 
 void synchronizeThreadAndSolveConflicts(struct ThreadConflictData *conflictData);
 
-void calculateAccumulatedEntitiesForThread(int threadNumber, InputData *inputData, ThreadRowData *threadRowData,
-                                           struct ThreadedData *threadedData);
+void updateCumulativeEntityCounts(int threadIndex, InputData *worldData, ThreadRowData *threadAssignments,
+                                   struct ThreadedData *threadSystem);
 
-void clearConflictsForThread(int thread, struct ThreadedData *threadedData);
+void resetThreadConflicts(int threadIndex, struct ThreadedData *threadSystem);
 
-void freeConflict(Conflict *);
+void destroyConflict(Conflict *conflict);
 
-void freeThreadData(int threads, struct ThreadedData *free);
+void destroyThreadingSystem(int threadCount, struct ThreadedData *threadSystem);
 
 #endif //TRABALHO_2_THREADS_H
