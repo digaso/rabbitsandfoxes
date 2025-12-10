@@ -2,7 +2,6 @@
 #define TRABALHO_2_RABBITSANDFOXES_H
 
 #include <stdio.h>
-#include "linkedlist.h"
 
 typedef enum MoveDirection_ MoveDirection;
 
@@ -81,20 +80,20 @@ typedef struct WorldSlot_ {
 
 } WorldSlot;
 
-InputData *readInputData(FILE *file);
+InputData *parseSimulationParameters(FILE *file);
 
 /**
  * Initialize the tray of data, returns a matrix where each position is a WorldSlot
  * @param data
  * @return
  */
-WorldSlot *initWorld(InputData *data);
+WorldSlot *initializeWorldMatrix(InputData *data);
 
-void executeSequentialThread(FILE *inputFile, FILE *outputFile);
+void runSequentialSimulation(FILE *inputFile, FILE *outputFile);
 
-void executeWithThreadCount(int threadCount, FILE *inputFile, FILE *outputFile);
+void runParallelSimulation(int threadCount, FILE *inputFile, FILE *outputFile);
 
-void readWorldInitialData(FILE *inputFile, InputData *inputData, WorldSlot *world);
+void loadWorldEntities(FILE *inputFile, InputData *inputData, WorldSlot *world);
 
 /**
  * Perform a generation of a world, within the bounds given by start of startRow and end of endRow
@@ -107,13 +106,13 @@ void readWorldInitialData(FILE *inputFile, InputData *inputData, WorldSlot *worl
  * @return
  */
 void
-performGeneration(int threadNumber, int genNumber, InputData *inputData,
+executeParallelGeneration(int threadNumber, int genNumber, InputData *simulationData,
                   struct ThreadedData *threadedData, WorldSlot *world, ThreadRowData *threadRowData);
 
-void handleConflicts(struct ThreadConflictData *conflictData, int conflictCount, Conflict *conflicts);
+void resolveThreadConflicts(struct ThreadConflictData *conflictContext, int conflictCount, Conflict *conflictArray);
 
-void printResults(FILE *outputFile, InputData *inputData, WorldSlot *world);
+void outputSimulationResults(FILE *outputFile, InputData *simulationData, WorldSlot *worldMatrix);
 
-void freeWorldMatrix(InputData *data, WorldSlot *worldMatrix);
+void deallocateWorldMatrix(InputData *simulationData, WorldSlot *worldMatrix);
 
 #endif //TRABALHO_2_RABBITSANDFOXES_H

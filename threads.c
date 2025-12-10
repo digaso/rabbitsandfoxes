@@ -2,29 +2,35 @@
 #include "threads.h"
 #include <stdlib.h>
 #include "semaphore.h"
+#include <limits.h>
 
-void initThreadData(int threadCount, InputData *data, struct ThreadedData *destination) {
-    destination->threads = malloc(sizeof(pthread_t) * threadCount);
+void initializeThreadingSystem(int threadCount, InputData *worldData, struct ThreadedData *threadSystem) {
+    // Allocate thread management arrays
+    threadSystem->threads = malloc(sizeof(pthread_t) * threadCount);
+    threadSystem->conflictPerThreads = malloc(sizeof(Conflicts *) * threadCount);
+    threadSystem->threadSemaphores = malloc(sizeof(sem_t) * threadCount);
+    threadSystem->precedingSemaphores = malloc(sizeof(sem_t) * threadCount);
 
-    destination->conflictPerThreads = malloc(sizeof(Conflicts *) * threadCount);
+    // Initialize thread synchronization barrier
+    pthread_barrier_init(&threadSystem->barrier, NULL, threadCount);
 
-    destination->threadSemaphores = malloc(sizeof(sem_t) * threadCount);
-    destination->precedingSemaphores = malloc(sizeof(sem_t) * threadCount);
+    // Initialize each thread's conflict management and synchronization
+    for (int threadIndex = 0; threadIndex < threadCount; threadIndex++) {
+        // Allocate conflict storage for this thread
+        threadSystem->conflictPerThreads[threadIndex] = malloc(sizeof(Conflicts));
+        Conflicts *threadConflicts = threadSystem->conflictPerThreads[threadIndex];
+        
+        // Initialize conflict counters
+        threadConflicts->aboveCount = 0;
+        threadConflicts->bellowCount = 0;
+        
+        // Allocate conflict arrays (size based on world width)
+        threadConflicts->above = malloc(sizeof(Conflict) * worldData->columns);
+        threadConflicts->bellow = malloc(sizeof(Conflict) * worldData->columns);
 
-    pthread_barrier_init(&destination->barrier, NULL, threadCount);
-
-    for (int i = 0; i < threadCount; i++) {
-        destination->conflictPerThreads[i] = malloc(sizeof(Conflicts));
-
-        destination->conflictPerThreads[i]->aboveCount = 0;
-        destination->conflictPerThreads[i]->above = malloc(sizeof(Conflict) * data->columns);
-        destination->conflictPerThreads[i]->bellowCount = 0;
-        destination->conflictPerThreads[i]->bellow = malloc(sizeof(Conflict) * data->columns);
-
-        sem_init(&destination->threadSemaphores[i], 0, 0);
-        sem_init(&destination->precedingSemaphores[i], 0, 0);
-
-//        printf("Initialized semaphore on address %p\n", &destination->threadSemaphores[i]);
+        // Initialize semaphores for thread coordination
+        sem_init(&threadSystem->threadSemaphores[threadIndex], 0, 0);
+        sem_init(&threadSystem->precedingSemaphores[threadIndex], 0, 0);
     }
 }
 
@@ -32,142 +38,155 @@ void initThreadData(int threadCount, InputData *data, struct ThreadedData *desti
  * We don't need to synchronize as each thread only accesses it's part of the memory, that's independent of the
  * rest
  */
-void clearConflictsForThread(int thread, struct ThreadedData *threadedData) {
-    Conflicts *conflictsForThread = threadedData->conflictPerThreads[thread];
+void resetThreadConflicts(int threadIndex, struct ThreadedData *threadSystem) {
+    Conflicts *threadConflicts = threadSystem->conflictPerThreads[threadIndex];
 
-    conflictsForThread->aboveCount = 0;
-    conflictsForThread->bellowCount = 0;
+    // Reset conflict counters (arrays are reused, no need to clear contents)
+    threadConflicts->aboveCount = 0;
+    threadConflicts->bellowCount = 0;
 }
 
-void initAndAppendConflict(Conflicts *conflicts, int above, int newRow, int newCol, WorldSlot *slot) {
-
-    //Conflict, we have to access another thread's memory space, create a conflict
-    //And store it in our conflict list
-    int *current;
+void createAndStoreConflict(Conflicts *threadConflicts, int isAboveThread, int targetRow, int targetCol, WorldSlot *sourceSlot) {
+    // Thread boundary conflict: entity wants to move to another thread's region
+    // Store conflict for later resolution during synchronization phase
+    
+    int *conflictCount;
     Conflict *conflictArray;
 
-    if (above) {
-        current = &conflicts->aboveCount;
-        conflictArray = conflicts->above;
+    if (isAboveThread) {
+        // Conflict with thread responsible for rows above current thread
+        conflictCount = &threadConflicts->aboveCount;
+        conflictArray = threadConflicts->above;
     } else {
-        current = &conflicts->bellowCount;
-        conflictArray = conflicts->bellow;
+        // Conflict with thread responsible for rows below current thread  
+        conflictCount = &threadConflicts->bellowCount;
+        conflictArray = threadConflicts->bellow;
     }
 
-    Conflict *conflict = &conflictArray[*current];
+    // Create conflict record
+    Conflict *newConflict = &conflictArray[*conflictCount];
+    newConflict->newRow = targetRow;
+    newConflict->newCol = targetCol;
+    newConflict->slotContent = sourceSlot->slotContent;
 
-    conflict->newRow = newRow;
-    conflict->newCol = newCol;
-
-    conflict->slotContent = slot->slotContent;
-
-    switch (slot->slotContent) {
+    // Store entity-specific data for conflict resolution
+    switch (sourceSlot->slotContent) {
         case FOX:
-            conflict->data = slot->entityInfo.foxInfo;
+            newConflict->data = sourceSlot->entityInfo.foxInfo;
             break;
         case RABBIT:
-            conflict->data = slot->entityInfo.rabbitInfo;
+            newConflict->data = sourceSlot->entityInfo.rabbitInfo;
             break;
+        case EMPTY:
+        case ROCK:
         default:
+            newConflict->data = NULL;
             break;
     }
 
-    (*current)++;
+    (*conflictCount)++;
 }
 
-int findRowWithEntities(int entityCount, const int *entitiesPerRowAccumulated, int rowCount) {
+int findRowByEntityCount(int targetEntityCount, const int *cumulativeEntityCounts, int totalRows) {
+    // Binary search to find the row that contains the target cumulative entity count
+    // Used for optimal workload distribution across threads
+    
+    int lowRow = 0;
+    int highRow = totalRows - 1;
+    int midRow = (lowRow + highRow) / 2;
 
-    int bottom = 0, top = rowCount - 1;
-
-    int middle = (top + bottom) / 2;
-
-    while (!(entitiesPerRowAccumulated[middle] <= entityCount && (middle >= rowCount - 1 ||
-                                                                  entitiesPerRowAccumulated[middle + 1] >
-                                                                  entityCount))) {
-        if (entitiesPerRowAccumulated[middle] > entityCount) {
-            top = middle - 1;
-        } else if (entitiesPerRowAccumulated[middle] < entityCount) {
-            bottom = middle + 1;
+    // Binary search for the row where cumulative count <= targetEntityCount
+    // and the next row's cumulative count > targetEntityCount
+    while (lowRow <= highRow) {
+        midRow = (lowRow + highRow) / 2;
+        
+        int currentCount = cumulativeEntityCounts[midRow];
+        int nextCount = (midRow + 1 < totalRows) ? cumulativeEntityCounts[midRow + 1] : INT_MAX;
+        
+        if (currentCount <= targetEntityCount && nextCount > targetEntityCount) {
+            // Found the correct row
+            return midRow;
+        } else if (currentCount > targetEntityCount) {
+            // Target is in lower half
+            highRow = midRow - 1;
         } else {
-            return middle;
-        }
-
-        middle = (top + bottom) / 2;
-
-        if (top == bottom || top < bottom) {
-            break;
+            // Target is in upper half
+            lowRow = midRow + 1;
         }
     }
 
-    return middle;
+    return midRow; // Fallback to last computed middle
 }
 
-int verifyThreadInputs(InputData *inputData) {
+int validateThreadConfiguration(InputData *simulationData) {
+    if (simulationData->threads > simulationData->rows) {
+        fprintf(stderr, "ERROR: Thread count (%d) cannot exceed row count (%d)\n", 
+                simulationData->threads, simulationData->rows);
+        exit(EXIT_FAILURE);
+    }
 
-    if (inputData->threads > inputData->rows) {
-        fprintf(stderr, "The number of threads cannot be larger than the number of rows!");
-
+    if (simulationData->threads < 1) {
+        fprintf(stderr, "ERROR: Thread count must be at least 1\n");
         exit(EXIT_FAILURE);
     }
 
     return 1;
 }
 
-void calculateOptimalThreadBalance(int threadCount, ThreadRowData *threadDatas, InputData *data) {
-    int totalEntities = data->entitiesAccumulatedPerRow[data->rows - 1];
+void distributeWorkloadAcrossThreads(int threadCount, ThreadRowData *threadAssignments, InputData *worldData) {
+    int totalEntities = worldData->entitiesAccumulatedPerRow[worldData->rows - 1];
+    int entitiesPerThread = totalEntities / threadCount;
+    int lastRowIndex = worldData->rows - 1;
+    int nextThreadStartRow = 0;
 
-    int optimalEntitiesPerThread = totalEntities / threadCount;
+    // Distribute workload by assigning row ranges to each thread
+    for (int threadIndex = 0; threadIndex < threadCount; threadIndex++) {
+        int remainingThreads = threadCount - threadIndex - 1;
+        int startRow = nextThreadStartRow;
+        int endRow;
 
-    int endOfPrevious = 0;
-
-    int lastRowIndex = data->rows - 1;
-
-    //We want thread to start
-    for (int thread = 1; thread <= threadCount; thread++) {
-
-        int threadsRemaining = threadCount - thread;
-
-        int startRow = endOfPrevious, endRow;
-
-        int optimalCumulativeCount = thread * optimalEntitiesPerThread;
-
-        /**
-         * Employ binary search to find
-         */
-        int rowWithCumulative = findRowWithEntities(optimalCumulativeCount, data->entitiesAccumulatedPerRow,
-                                                    data->rows);
-
-        //We have to make sure that there are still some rows for the upcoming threads
-        if ((lastRowIndex - rowWithCumulative) < threadsRemaining) {
-            rowWithCumulative = (lastRowIndex - threadsRemaining);
+        if (threadIndex == threadCount - 1) {
+            // Last thread takes all remaining rows
+            endRow = lastRowIndex;
+        } else {
+            // Find optimal end row based on entity distribution
+            int targetCumulativeEntities = (threadIndex + 1) * entitiesPerThread;
+            int optimalEndRow = findRowByEntityCount(targetCumulativeEntities, 
+                                                      worldData->entitiesAccumulatedPerRow, 
+                                                      worldData->rows);
+            
+            // Ensure enough rows remain for subsequent threads
+            int rowsNeededForRemainingThreads = remainingThreads;
+            int maxAllowedEndRow = lastRowIndex - rowsNeededForRemainingThreads;
+            
+            if (optimalEndRow > maxAllowedEndRow) {
+                optimalEndRow = maxAllowedEndRow;
+            }
+            
+            // Ensure this thread gets at least one row
+            if (optimalEndRow < startRow) {
+                optimalEndRow = startRow;
+            }
+            
+            endRow = optimalEndRow;
         }
 
-        if (rowWithCumulative < startRow) {
-            rowWithCumulative = startRow;
-        }
-
-        //If we're the last thread remaining, take up the slack of rows that haven't been picked
-        if (threadsRemaining == 0 && rowWithCumulative < data->rows - 1) {
-            rowWithCumulative = data->rows - 1;
-        }
-
-        endRow = rowWithCumulative;
-
-        endOfPrevious = rowWithCumulative + 1;
-
-        (&threadDatas[thread - 1])->endRow = endRow;
-        (&threadDatas[thread - 1])->startRow = startRow;
-
-        //printf("Limits for thread %d, %d %d\n", thread-1, startRow, endRow);
+        // Assign row range to thread
+        threadAssignments[threadIndex].startRow = startRow;
+        threadAssignments[threadIndex].endRow = endRow;
+        
+        // Next thread starts after this thread's range
+        nextThreadStartRow = endRow + 1;
     }
-
 }
 
-void freeConflict(Conflict *conflict) {
-    free(conflict);
+void destroyConflict(Conflict *conflict) {
+    if (conflict != NULL) {
+        free(conflict);
+    }
 }
 
-void synchronizeThreadAndSolveConflicts(struct ThreadConflictData *conflictData) {
+void synchronizeAndResolveThreadConflicts(struct ThreadConflictData *conflictData) {
     if (conflictData->inputData->threads > 1) {
 
         struct ThreadedData *threadedData = conflictData->threadedData;
@@ -185,7 +204,7 @@ void synchronizeThreadAndSolveConflicts(struct ThreadConflictData *conflictData)
 
 //            printf("Thread %d called handle conflicts with thread %d\n", conflictData->threadNum,  conflictData->threadNum + 1);
 
-            handleConflicts(conflictData, bottomConflicts->aboveCount, bottomConflicts->above);
+            resolveThreadConflicts(conflictData, bottomConflicts->aboveCount, bottomConflicts->above);
 
         } else if (conflictData->threadNum > 0 && conflictData->threadNum < (conflictData->inputData->threads - 1)) {
 
@@ -215,7 +234,7 @@ void synchronizeThreadAndSolveConflicts(struct ThreadConflictData *conflictData)
                         Conflicts *topConf = threadedData->conflictPerThreads[topThread];
 
 //                        printf("Thread %d called handle conflicts with thread %d\n", conflictData->threadNum,  topThread);
-                        handleConflicts(conflictData, topConf->bellowCount, topConf->bellow);
+                        resolveThreadConflicts(conflictData, topConf->bellowCount, topConf->bellow);
 
                         sems_left--;
                         topDone = 1;
@@ -231,7 +250,7 @@ void synchronizeThreadAndSolveConflicts(struct ThreadConflictData *conflictData)
                         Conflicts *botConf = threadedData->conflictPerThreads[bottThread];
 
 //                        printf("Thread %d called handle conflicts with thread %d\n", conflictData->threadNum,  bottThread);
-                        handleConflicts(conflictData, botConf->aboveCount, botConf->above);
+                        resolveThreadConflicts(conflictData, botConf->aboveCount, botConf->above);
 
                         botDone = 1;
                         sems_left--;
@@ -252,13 +271,13 @@ void synchronizeThreadAndSolveConflicts(struct ThreadConflictData *conflictData)
             Conflicts *conflicts = threadedData->conflictPerThreads[topThread];
 //            printf("Thread %d called handle conflicts with thread %d\n", conflictData->threadNum,  conflictData->threadNum - 1);
 
-            handleConflicts(conflictData, conflicts->bellowCount, conflicts->bellow);
+            resolveThreadConflicts(conflictData, conflicts->bellowCount, conflicts->bellow);
         }
     }
 }
 
 
-static void postForNextThread(int threadNumber, InputData *data, struct ThreadedData *threadedData) {
+static void signalCompletionAndWaitForBarrier(int threadNumber, InputData *data, struct ThreadedData *threadedData) {
     if (threadNumber < data->threads - 1) {
         sem_t *our_sem = &threadedData->precedingSemaphores[threadNumber];
 
@@ -269,10 +288,9 @@ static void postForNextThread(int threadNumber, InputData *data, struct Threaded
     //Because the last thread calculates the thread balance, we can instantly start a new generation
     pthread_barrier_wait(&threadedData->barrier);
 
-    //printf("Passed the barrier! Thread %d\n", threadNumber);
 }
 
-static void waitForPrecedingThread(int threadNumber, InputData *data, struct ThreadedData *threadedData) {
+static void waitForPreviousThreadCompletion(int threadNumber, InputData *data, struct ThreadedData *threadedData) {
 
     if (threadNumber > 0) {
         sem_t *topSem = &threadedData->precedingSemaphores[threadNumber - 1];
@@ -282,28 +300,32 @@ static void waitForPrecedingThread(int threadNumber, InputData *data, struct Thr
 
 }
 
-void calculateAccumulatedEntitiesForThread(int threadNumber, InputData *inputData, ThreadRowData *threadRowData,
-                                           struct ThreadedData *threadedData) {
-    waitForPrecedingThread(threadNumber, inputData, threadedData);
+void updateCumulativeEntityCounts(int threadIndex, InputData *worldData, ThreadRowData *threadAssignments,
+                                   struct ThreadedData *threadSystem) {
+    // Wait for previous thread to complete its cumulative calculation
+    waitForPreviousThreadCompletion(threadIndex, worldData, threadSystem);
 
-    ThreadRowData *threadRows = &threadRowData[threadNumber];
+    ThreadRowData *currentThreadRows = &threadAssignments[threadIndex];
+    int startRow = currentThreadRows->startRow;
+    int endRow = currentThreadRows->endRow;
 
-    int startRow = threadRows->startRow, endRow = threadRows->endRow;
-
+    // Update cumulative entity counts for this thread's assigned rows
     for (int row = startRow; row <= endRow; row++) {
-        inputData->entitiesAccumulatedPerRow[row] =
-                inputData->entitiesAccumulatedPerRow[row - 1] + inputData->entitiesPerRow[row];
+        int previousRowCount = (row > 0) ? worldData->entitiesAccumulatedPerRow[row - 1] : 0;
+        worldData->entitiesAccumulatedPerRow[row] = previousRowCount + worldData->entitiesPerRow[row];
     }
 
-    if (threadNumber == inputData->threads - 1) {
-        calculateOptimalThreadBalance(inputData->threads, threadRowData, inputData);
+    // Last thread recalculates workload distribution for next generation
+    if (threadIndex == worldData->threads - 1) {
+        distributeWorkloadAcrossThreads(worldData->threads, threadAssignments, worldData);
     }
 
-    postForNextThread(threadNumber, inputData, threadedData);
+    // Signal completion and wait for other threads
+    signalCompletionAndWaitForBarrier(threadIndex, worldData, threadSystem);
 }
 
 
-void postAndWaitForSurrounding(int threadNumber, InputData *data, struct ThreadedData *threadedData) {
+void synchronizeWithAdjacentThreads(int threadNumber, InputData *data, struct ThreadedData *threadedData) {
 
     if (data->threads < 2) return;
 
@@ -365,26 +387,34 @@ void postAndWaitForSurrounding(int threadNumber, InputData *data, struct Threade
 
 }
 
-void freeConflicts(Conflicts *conflicts) {
-    free(conflicts->above);
-    free(conflicts->bellow);
-
-    free(conflicts);
+void destroyConflictsContainer(Conflicts *conflicts) {
+    if (conflicts != NULL) {
+        free(conflicts->above);
+        free(conflicts->bellow);
+        free(conflicts);
+    }
 }
 
-void freeThreadData(int threads, struct ThreadedData *data) {
-
-    for (int thread = 0; thread < threads; thread++) {
-        freeConflicts(data->conflictPerThreads[thread]);
-
-        sem_destroy(&data->threadSemaphores[thread]);
+void destroyThreadingSystem(int threadCount, struct ThreadedData *threadSystem) {
+    if (threadSystem == NULL) {
+        return;
     }
-    free(data->conflictPerThreads);
 
-    free(data->threadSemaphores);
-    free(data->threads);
+    // Clean up per-thread resources
+    for (int threadIndex = 0; threadIndex < threadCount; threadIndex++) {
+        destroyConflictsContainer(threadSystem->conflictPerThreads[threadIndex]);
+        sem_destroy(&threadSystem->threadSemaphores[threadIndex]);
+        sem_destroy(&threadSystem->precedingSemaphores[threadIndex]);
+    }
+    
+    // Clean up arrays
+    free(threadSystem->conflictPerThreads);
+    free(threadSystem->threadSemaphores);
+    free(threadSystem->precedingSemaphores);
+    free(threadSystem->threads);
 
-    pthread_barrier_destroy(&data->barrier);
+    // Destroy synchronization barrier
+    pthread_barrier_destroy(&threadSystem->barrier);
 
-    free(data);
+    free(threadSystem);
 }

@@ -12,42 +12,40 @@ static Move *WEST_MOVE = NULL;
 
 static MoveDirection *defaultDirections = NULL;
 
-static void initMoves() {
-
+static void initializeMovementVectors() {
+    // Initialize directional movement vectors
     NORTH_MOVE = malloc(sizeof(Move));
-
-    NORTH_MOVE->x = -1;
+    NORTH_MOVE->x = -1;  // Up (negative row)
     NORTH_MOVE->y = 0;
 
     EAST_MOVE = malloc(sizeof(Move));
-
     EAST_MOVE->x = 0;
-    EAST_MOVE->y = 1;
+    EAST_MOVE->y = 1;    // Right (positive column)
 
     SOUTH_MOVE = malloc(sizeof(Move));
-    SOUTH_MOVE->x = 1;
+    SOUTH_MOVE->x = 1;   // Down (positive row)
     SOUTH_MOVE->y = 0;
 
     WEST_MOVE = malloc(sizeof(Move));
     WEST_MOVE->x = 0;
-    WEST_MOVE->y = -1;
-
+    WEST_MOVE->y = -1;   // Left (negative column)
 }
 
-static void initDefaultDirections() {
+static void initializeAllDirectionsArray() {
+    // Create array with all possible directions for memory optimization
     defaultDirections = malloc(sizeof(MoveDirection) * DIRECTIONS);
-
-    defaultDirections[0] = 0;
-    defaultDirections[1] = 1;
-    defaultDirections[2] = 2;
-    defaultDirections[3] = 3;
+    
+    defaultDirections[0] = NORTH;
+    defaultDirections[1] = EAST;
+    defaultDirections[2] = SOUTH;
+    defaultDirections[3] = WEST;
 }
 
-Move *getMoveFor(MoveDirection direction) {
+Move *getMoveDirection(MoveDirection direction) {
 
     if (NORTH_MOVE == NULL || EAST_MOVE == NULL || SOUTH_MOVE == NULL || WEST_MOVE == NULL) {
 
-        initMoves();
+        initializeMovementVectors();
 
     }
 
@@ -71,191 +69,234 @@ Move *getMoveFor(MoveDirection direction) {
 
 }
 
-struct DefaultMovements getDefaultPossibleMovements(int x, int y, InputData *inputData, WorldSlot *world) {
+static int isValidPosition(int row, int col, InputData *worldData) {
+    return (row >= 0 && col >= 0 && row < worldData->rows && col < worldData->columns);
+}
 
-    int possibleMoves[4] = {1, 1, 1, 1};
-
-    int defaultP = 0;
-
-    for (int i = 0; i < 4; i++) {
-        if (possibleMoves[i]) {
-            Move *move = getMoveFor(i);
-
-            int finalX = x + move->x, finalY = y + move->y;
-
-            if (finalX < 0 || finalY < 0 || finalX >= inputData->columns || finalY >= inputData->rows) {
-                possibleMoves[i] = 0;
-                continue;
-            }
-
-            WorldSlot *slot = &world[PROJECT(inputData->columns,
-                                             x + move->x, y + move->y)];
-
-            if (slot->slotContent == ROCK) {
-                //If there's a rock, this move will never be possible, as rocks are never removed
-                possibleMoves[i] = 0;
-            }
-        }
-
-        defaultP += possibleMoves[i];
+static int isMovementBlocked(int fromRow, int fromCol, MoveDirection direction, 
+                             InputData *worldData, WorldSlot *world) {
+    Move *moveVector = getMoveDirection(direction);
+    int targetRow = fromRow + moveVector->x;
+    int targetCol = fromCol + moveVector->y;
+    
+    // Check world boundaries
+    if (!isValidPosition(targetRow, targetCol, worldData)) {
+        return 1;  // Movement blocked by world boundary
     }
+    
+    // Check for permanent obstacles (rocks)
+    WorldSlot *targetSlot = &world[PROJECT(worldData->columns, targetRow, targetCol)];
+    if (targetSlot->slotContent == ROCK) {
+        return 1;  // Movement blocked by rock
+    }
+    
+    return 0;  // Movement is valid
+}
 
-    MoveDirection *directions;
-
-    if (defaultP < 4) {
-        directions = malloc(sizeof(MoveDirection) * defaultP);
-
-        int current = 0;
-
-        for (int i = 0; i < 4; i++) {
-            if (possibleMoves[i]) {
-                directions[current++] = i;
-            }
+struct DefaultMovements calculateValidMovements(int row, int col, InputData *worldData, WorldSlot *world) {
+    int validDirections[DIRECTIONS] = {1, 1, 1, 1};  // Initially assume all directions valid
+    int validMovementCount = 0;
+    
+    // Check each direction for validity
+    for (int direction = 0; direction < DIRECTIONS; direction++) {
+        if (isMovementBlocked(row, col, direction, worldData, world)) {
+            validDirections[direction] = 0;
+        } else {
+            validMovementCount++;
         }
-    } else {
-        //If we can move in every direction, we can use the default global array to save memory
+    }
+    
+    // Allocate directions array
+    MoveDirection *availableDirections;
+    
+    if (validMovementCount == DIRECTIONS) {
+        // All directions valid - use shared array for memory efficiency
         if (defaultDirections == NULL) {
-            initDefaultDirections();
+            initializeAllDirectionsArray();
         }
-
-        directions = defaultDirections;
-    }
-
-    struct DefaultMovements movements = {defaultP, directions};
-
-    return movements;
-}
-
-struct FoxMovements *initFoxMovements() {
-    struct FoxMovements *foxMovements = malloc(sizeof(struct FoxMovements));
-
-    foxMovements->emptyMovements = 0;
-    foxMovements->rabbitMovements = 0;
-    foxMovements->rabbitDirections = malloc(sizeof(MoveDirection) * DIRECTIONS);
-    foxMovements->emptyDirections = malloc(sizeof(MoveDirection) * DIRECTIONS);
-
-    return foxMovements;
-}
-
-struct RabbitMovements *initRabbitMovements() {
-    struct RabbitMovements *rabbitMovements = malloc(sizeof(struct RabbitMovements));
-
-    rabbitMovements->emptyMovements = 0;
-    rabbitMovements->emptyDirections = malloc(sizeof(MoveDirection) * DIRECTIONS);
-
-    return rabbitMovements;
-}
-
-void getPossibleFoxMovements(int x, int y, InputData *inputData, WorldSlot *world, struct FoxMovements *dest) {
-
-    WorldSlot currentSlot = world[PROJECT(inputData->columns, x, y)];
-
-    int rabbitMovements = 0, emptyMovements = 0;
-
-    int rabbitMoves[currentSlot.defaultP], emptyMoves[currentSlot.defaultP];
-
-    for (int i = 0; i < currentSlot.defaultP; i++) {
-        MoveDirection direction = currentSlot.defaultPossibleMoveDirections[i];
-
-        Move *move = getMoveFor(direction);
-
-        WorldSlot *possibleSlot = &world[PROJECT(inputData->columns, x + move->x, y + move->y)];
-
-        if (possibleSlot->slotContent == RABBIT) {
-            rabbitMovements++;
-
-            rabbitMoves[i] = 1;
-            emptyMoves[i] = 0;
-        } else if (possibleSlot->slotContent == EMPTY) {
-            emptyMovements++;
-            emptyMoves[i] = 1;
-            rabbitMoves[i] = 0;
-        } else {
-            emptyMoves[i] = 0;
-            rabbitMoves[i] = 0;
-        }
-    }
-
-    dest->rabbitMovements = rabbitMovements;
-    dest->emptyMovements = emptyMovements;
-
-    if (rabbitMovements > 0) {
-        int current = 0;
-
-        for (int i = 0; i < currentSlot.defaultP; i++) {
-            if (rabbitMoves[i]) {
-                dest->rabbitDirections[current++] = currentSlot.defaultPossibleMoveDirections[i];
+        availableDirections = defaultDirections;
+    } else {
+        // Some directions blocked - create custom array
+        availableDirections = malloc(sizeof(MoveDirection) * validMovementCount);
+        int arrayIndex = 0;
+        
+        for (int direction = 0; direction < DIRECTIONS; direction++) {
+            if (validDirections[direction]) {
+                availableDirections[arrayIndex++] = direction;
             }
         }
+    }
+    
+    struct DefaultMovements result = {validMovementCount, availableDirections};
+    return result;
+}
 
+struct FoxMovements *createFoxMovementContext() {
+    struct FoxMovements *context = malloc(sizeof(struct FoxMovements));
+    
+    if (context == NULL) {
+        return NULL;
+    }
+    
+    // Initialize movement counters
+    context->emptyMovements = 0;
+    context->rabbitMovements = 0;
+    
+    // Allocate direction arrays (maximum possible directions)
+    context->rabbitDirections = malloc(sizeof(MoveDirection) * DIRECTIONS);
+    context->emptyDirections = malloc(sizeof(MoveDirection) * DIRECTIONS);
+    
+    if (context->rabbitDirections == NULL || context->emptyDirections == NULL) {
+        free(context->rabbitDirections);
+        free(context->emptyDirections);
+        free(context);
+        return NULL;
+    }
+    
+    return context;
+}
+
+struct RabbitMovements *createRabbitMovementContext() {
+    struct RabbitMovements *context = malloc(sizeof(struct RabbitMovements));
+    
+    if (context == NULL) {
+        return NULL;
+    }
+    
+    // Initialize movement counter
+    context->emptyMovements = 0;
+    
+    // Allocate direction array (maximum possible directions)
+    context->emptyDirections = malloc(sizeof(MoveDirection) * DIRECTIONS);
+    
+    if (context->emptyDirections == NULL) {
+        free(context);
+        return NULL;
+    }
+    
+    return context;
+}
+
+void analyzeFoxMovementOptions(int row, int col, InputData *worldData, WorldSlot *world, struct FoxMovements *result) {
+    WorldSlot *currentSlot = &world[PROJECT(worldData->columns, row, col)];
+    
+    int preyMovements = 0, emptyMovements = 0;
+    int preyDirectionsFlags[currentSlot->defaultP];
+    int emptyDirectionsFlags[currentSlot->defaultP];
+    
+    // Analyze each possible direction
+    for (int dirIndex = 0; dirIndex < currentSlot->defaultP; dirIndex++) {
+        MoveDirection direction = currentSlot->defaultPossibleMoveDirections[dirIndex];
+        Move *moveVector = getMoveDirection(direction);
+        
+        int targetRow = row + moveVector->x;
+        int targetCol = col + moveVector->y;
+        WorldSlot *targetSlot = &world[PROJECT(worldData->columns, targetRow, targetCol)];
+        
+        SlotContent targetContent = targetSlot->slotContent;
+        
+        if (targetContent == RABBIT) {
+            // Fox can hunt prey
+            preyMovements++;
+            preyDirectionsFlags[dirIndex] = 1;
+            emptyDirectionsFlags[dirIndex] = 0;
+        } else if (targetContent == EMPTY) {
+            // Fox can move to empty space
+            emptyMovements++;
+            emptyDirectionsFlags[dirIndex] = 1;
+            preyDirectionsFlags[dirIndex] = 0;
+        } else {
+            // Fox cannot move here (fox or rock)
+            emptyDirectionsFlags[dirIndex] = 0;
+            preyDirectionsFlags[dirIndex] = 0;
+        }
+    }
+    
+    // Store results
+    result->rabbitMovements = preyMovements;
+    result->emptyMovements = emptyMovements;
+    
+    // Populate direction arrays based on priority (prey first, then empty spaces)
+    if (preyMovements > 0) {
+        int arrayIndex = 0;
+        for (int dirIndex = 0; dirIndex < currentSlot->defaultP; dirIndex++) {
+            if (preyDirectionsFlags[dirIndex]) {
+                result->rabbitDirections[arrayIndex++] = currentSlot->defaultPossibleMoveDirections[dirIndex];
+            }
+        }
     } else if (emptyMovements > 0) {
-        int current = 0;
-
-        for (int i = 0; i < currentSlot.defaultP; i++) {
-            if (emptyMoves[i]) {
-                dest->emptyDirections[current++] = currentSlot.defaultPossibleMoveDirections[i];
+        int arrayIndex = 0;
+        for (int dirIndex = 0; dirIndex < currentSlot->defaultP; dirIndex++) {
+            if (emptyDirectionsFlags[dirIndex]) {
+                result->emptyDirections[arrayIndex++] = currentSlot->defaultPossibleMoveDirections[dirIndex];
             }
         }
     }
-
 }
 
-void getPossibleRabbitMovements(int x, int y, InputData *inputData, WorldSlot *world,
-                                struct RabbitMovements *rabbitMovements) {
-
-    WorldSlot *currentSlot = &world[PROJECT(inputData->columns, x, y)];
-
-    int emptyMovements = 0;
-
-    int emptyMoves[currentSlot->defaultP];
-
-    for (int i = 0; i < currentSlot->defaultP; i++) {
-        MoveDirection direction = currentSlot->defaultPossibleMoveDirections[i];
-
-        Move *move = getMoveFor(direction);
-
-        WorldSlot *possibleSlot = &world[PROJECT(inputData->columns, x + move->x, y + move->y)];
-
-        if (possibleSlot->slotContent == EMPTY) {
-            emptyMovements++;
-            emptyMoves[i] = 1;
+void analyzeRabbitMovementOptions(int row, int col, InputData *worldData, WorldSlot *world,
+                                   struct RabbitMovements *result) {
+    WorldSlot *currentSlot = &world[PROJECT(worldData->columns, row, col)];
+    
+    int safeMovements = 0;
+    int safeDirectionsFlags[currentSlot->defaultP];
+    
+    // Analyze each possible direction for safe movement
+    for (int dirIndex = 0; dirIndex < currentSlot->defaultP; dirIndex++) {
+        MoveDirection direction = currentSlot->defaultPossibleMoveDirections[dirIndex];
+        Move *moveVector = getMoveDirection(direction);
+        
+        int targetRow = row + moveVector->x;
+        int targetCol = col + moveVector->y;
+        WorldSlot *targetSlot = &world[PROJECT(worldData->columns, targetRow, targetCol)];
+        
+        if (targetSlot->slotContent == EMPTY) {
+            // Rabbit can safely move to empty space
+            safeMovements++;
+            safeDirectionsFlags[dirIndex] = 1;
         } else {
-            emptyMoves[i] = 0;
+            // Rabbit cannot move here (occupied by fox, rabbit, or rock)
+            safeDirectionsFlags[dirIndex] = 0;
         }
     }
-
-    rabbitMovements->emptyMovements = emptyMovements;
-
-    if (emptyMovements > 0) {
-        int current = 0;
-
-        for (int i = 0; i < currentSlot->defaultP; i++) {
-            if (emptyMoves[i]) {
-                rabbitMovements->emptyDirections[current++] = currentSlot->defaultPossibleMoveDirections[i];
+    
+    // Store results
+    result->emptyMovements = safeMovements;
+    
+    // Populate direction array with safe movement options
+    if (safeMovements > 0) {
+        int arrayIndex = 0;
+        for (int dirIndex = 0; dirIndex < currentSlot->defaultP; dirIndex++) {
+            if (safeDirectionsFlags[dirIndex]) {
+                result->emptyDirections[arrayIndex++] = currentSlot->defaultPossibleMoveDirections[dirIndex];
             }
         }
     }
 }
 
-void freeMovementForSlot(MoveDirection *directions) {
-    if (directions != defaultDirections) {
+void releaseMovementDirections(MoveDirection *directions) {
+    if (directions != NULL && directions != defaultDirections) {
         free(directions);
     }
 }
 
-void freeDefaultMovements(struct DefaultMovements *movements) {
-    free(movements->directions);
+void releaseDefaultMovements(struct DefaultMovements *movements) {
+    if (movements != NULL) {
+        releaseMovementDirections(movements->directions);
+    }
 }
 
-void freeFoxMovements(struct FoxMovements *foxMovements) {
-    free(foxMovements->rabbitDirections);
-    free(foxMovements->emptyDirections);
-
-    free(foxMovements);
+void destroyFoxMovementContext(struct FoxMovements *context) {
+    if (context != NULL) {
+        free(context->rabbitDirections);
+        free(context->emptyDirections);
+        free(context);
+    }
 }
 
-void freeRabbitMovements(struct RabbitMovements *rabbitMovements) {
-    free(rabbitMovements->emptyDirections);
-
-    free(rabbitMovements);
+void destroyRabbitMovementContext(struct RabbitMovements *context) {
+    if (context != NULL) {
+        free(context->emptyDirections);
+        free(context);
+    }
 }

@@ -40,24 +40,24 @@ struct RabbitMovements {
 
 };
 
-Move *getMoveFor(MoveDirection direction);
+Move *getMoveDirection(MoveDirection direction);
 
-struct DefaultMovements getDefaultPossibleMovements(int x, int y, InputData *inputData, WorldSlot *world);
+struct DefaultMovements calculateValidMovements(int row, int col, InputData *worldData, WorldSlot *world);
 
-struct FoxMovements *initFoxMovements();
+struct FoxMovements *createFoxMovementContext();
 
-struct RabbitMovements *initRabbitMovements();
+struct RabbitMovements *createRabbitMovementContext();
 
-void getPossibleFoxMovements(int x, int y, InputData *inputData, WorldSlot *world, struct FoxMovements *dest);
+void analyzeFoxMovementOptions(int row, int col, InputData *worldData, WorldSlot *world, struct FoxMovements *result);
 
-void getPossibleRabbitMovements(int x, int y, InputData *inputData, WorldSlot *world, struct RabbitMovements *dest);
+void analyzeRabbitMovementOptions(int row, int col, InputData *worldData, WorldSlot *world, struct RabbitMovements *result);
 
-void freeMovementForSlot(MoveDirection *directions);
+void releaseMovementDirections(MoveDirection *directions);
 
-void freeDefaultMovements(struct DefaultMovements *movements);
+void releaseDefaultMovements(struct DefaultMovements *movements);
 
-void freeFoxMovements(struct FoxMovements *foxMovements);
+void destroyFoxMovementContext(struct FoxMovements *context);
 
-void freeRabbitMovements(struct RabbitMovements *rabbitMovements);
+void destroyRabbitMovementContext(struct RabbitMovements *context);
 
 #endif //TRABALHO_2_MOVEMENTS_H
