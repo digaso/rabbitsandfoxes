@@ -2,7 +2,6 @@
 #define TRABALHO_2_RABBITSANDFOXES_H
 
 #include <stdio.h>
-#include "linkedlist.h"
 
 typedef enum MoveDirection_ MoveDirection;
 

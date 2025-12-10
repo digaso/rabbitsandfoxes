@@ -4,7 +4,7 @@ LINKS=-lpthread
 OUTPUT=ecosystem
 
 all:
-	$(CC) $(ARGS) main.c matrix_utils.c movements.c entities.c output.c rabbitsandfoxes.c threads.c linkedlist.c -o $(OUTPUT) $(LINKS)
+	$(CC) $(ARGS) main.c matrix_utils.c movements.c entities.c output.c rabbitsandfoxes.c threads.c -o $(OUTPUT) $(LINKS)
 
 test-5x5: $(OUTPUT)
 	@echo "=== Testing 5x5 input ==="

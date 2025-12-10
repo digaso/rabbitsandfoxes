@@ -2,7 +2,6 @@
 #define TRABALHO_2_THREADS_H
 
 #include "pthread.h"
-#include "linkedlist.h"
 #include "semaphore.h"
 #include "rabbitsandfoxes.h"
 
