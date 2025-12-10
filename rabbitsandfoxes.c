@@ -302,7 +302,7 @@ performRabbitGeneration(int threadNumber, int genNumber, InputData* inputData, s
 
     //First move the rabbits
 
-    struct RabbitMovements* possibleRabbitMoves = initRabbitMovements();
+    struct RabbitMovements* possibleRabbitMoves = createRabbitMovementContext();
 
     for (int copyRow = 0; copyRow <= trueRowCount; copyRow++) {
         int row = copyRow + startRow;
@@ -318,7 +318,7 @@ performRabbitGeneration(int threadNumber, int genNumber, InputData* inputData, s
 
             if (slot->slotContent == RABBIT) {
 
-                getPossibleRabbitMovements(copyRow + storagePaddingTop, col, inputData, worldCopy,
+                analyzeRabbitMovementOptions(copyRow + storagePaddingTop, col, inputData, worldCopy,
                     possibleRabbitMoves);
 
                 tickRabbit(genNumber, startRow, endRow, row, col, slot,
@@ -330,7 +330,7 @@ performRabbitGeneration(int threadNumber, int genNumber, InputData* inputData, s
         }
     }
 
-    freeRabbitMovements(possibleRabbitMoves);
+    destroyRabbitMovementContext(possibleRabbitMoves);
 
     //Initialize with the conflicts at null because we don't want to access the memory
     //Until we know it's safe to do so
@@ -483,7 +483,7 @@ performFoxGeneration(int threadNumber, int genNumber, InputData* inputData, stru
     if (threadedData != NULL)
         conflictsForThread = threadedData->conflictPerThreads[ threadNumber ];
 
-    struct FoxMovements* foxMovements = initFoxMovements();
+    struct FoxMovements* foxMovements = createFoxMovementContext();
 
     for (int copyRow = 0; copyRow <= trueRowCount; copyRow++) {
         for (int col = 0; col < inputData->columns; col++) {
@@ -494,7 +494,7 @@ performFoxGeneration(int threadNumber, int genNumber, InputData* inputData, stru
 
             if (slot->slotContent == FOX) {
 
-                getPossibleFoxMovements(copyRow + storagePaddingTop, col, inputData,
+                analyzeFoxMovementOptions(copyRow + storagePaddingTop, col, inputData,
                     worldCopy, foxMovements);
 
                 tickFox(genNumber, startRow, endRow, row, col, slot,
@@ -504,7 +504,7 @@ performFoxGeneration(int threadNumber, int genNumber, InputData* inputData, stru
         }
     }
 
-    freeFoxMovements(foxMovements);
+    destroyFoxMovementContext(foxMovements);
 
     struct ThreadConflictData conflictData = { threadNumber, startRow, endRow, inputData,
                                               world, threadedData };
@@ -803,7 +803,7 @@ void freeWorldMatrix(InputData* data, WorldSlot* worldMatrix) {
                 destroyFoxEntity(slot->entityInfo.foxInfo);
             }
 
-            freeMovementForSlot(slot->defaultPossibleMoveDirections);
+            releaseMovementDirections(slot->defaultPossibleMoveDirections);
 
         }
     }

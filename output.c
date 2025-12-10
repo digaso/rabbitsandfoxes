@@ -18,7 +18,7 @@ void calculateEntityDistribution(InputData* inputData, WorldSlot* world) {
         for (int col = 0; col < inputData->columns; col++) {
             WorldSlot* currentSlot = &world[PROJECT(inputData->columns, row, col)];
 
-            struct DefaultMovements movementOptions = getDefaultPossibleMovements(row, col, inputData, world);
+            struct DefaultMovements movementOptions = calculateValidMovements(row, col, inputData, world);
             currentSlot->defaultP = movementOptions.movementCount;
             currentSlot->defaultPossibleMoveDirections = movementOptions.directions;
 
