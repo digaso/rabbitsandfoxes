@@ -171,8 +171,8 @@ Achieving effective load distribution based on entity density rather than fixed 
 **Deterministic Parallel Execution:**
 Ensuring identical results across different thread counts demanded careful synchronization point placement and deterministic movement selection algorithms.
 
-**Performance Optimization vs. Correctness:**
-Balancing synchronization overhead with computational parallelism proved difficult. Too few synchronization points introduced race conditions, while excessive synchronization eliminated performance gains.
+**Performance**
+We still don't understand how some runs were better with less threads than some with more threads. Although we implemented the advise the professor gave us in the last project
 
 ## Conclusion
 
