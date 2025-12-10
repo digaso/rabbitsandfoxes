@@ -5,10 +5,10 @@
 #include <stdio.h>
 
 // Input functions
-InputData* readInputData(FILE* file);
+InputData* parseSimulationParameters(FILE* file);
 WorldSlot* initializeWorldMatrix(InputData* data);
-void readWorldInitialData(FILE* file, InputData* data, WorldSlot* world);
-void initialRowEntityCount(InputData* inputData, WorldSlot* world);
+void loadWorldEntities(FILE* file, InputData* simulationData, WorldSlot* world);
+void calculateEntityDistribution(InputData* inputData, WorldSlot* world);
 
 // Output functions  
 void printResults(FILE* outputFile, InputData* inputData, WorldSlot* worldSlot);

@@ -55,7 +55,7 @@ makeCopyOfPartOfWorld(int threadNumber, InputData* data, struct ThreadedData* th
 
 void executeSequentialThread(FILE* inputFile, FILE* outputFile) {
 
-    InputData* data = readInputData(inputFile);
+    InputData* data = parseSimulationParameters(inputFile);
 
     data->threads = 1;
 
@@ -65,7 +65,7 @@ void executeSequentialThread(FILE* inputFile, FILE* outputFile) {
 
     WorldSlot* world = initializeWorldMatrix(data);
 
-    readWorldInitialData(inputFile, data, world);
+    loadWorldEntities(inputFile, data, world);
 
     if (PRINT_ALL_GEN) {
         outputFile = fopen("allgen.txt", "w");
@@ -127,7 +127,7 @@ static void executeThread(struct InitialInputData* args) {
 
 void executeWithThreadCount(int threadCount, FILE* inputFile, FILE* outputFile) {
 
-    InputData* data = readInputData(inputFile);
+    InputData* data = parseSimulationParameters(inputFile);
 
     data->threads = threadCount;
 
@@ -137,7 +137,7 @@ void executeWithThreadCount(int threadCount, FILE* inputFile, FILE* outputFile) 
 
     WorldSlot* world = initializeWorldMatrix(data);
 
-    readWorldInitialData(inputFile, data, world);
+    loadWorldEntities(inputFile, data, world);
 
     if (!verifyThreadInputs(data)) {
         exit(1);

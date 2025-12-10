@@ -2,3 +2,4 @@ ecosystem
 RabbitsAndFoxes/
 .vscode/
 *.o
+*.out
