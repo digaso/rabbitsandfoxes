@@ -19,7 +19,7 @@ struct LinkedList_s {
 
 typedef struct LinkedList_s LinkedList;
 
-LinkedList *ll_initList();
+LinkedList *ll_initialize();
 
 void *ll_peek(LinkedList *);
 

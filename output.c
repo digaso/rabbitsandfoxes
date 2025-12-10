@@ -55,7 +55,7 @@ InputData* readInputData(FILE* file) {
     return inputData;
 }
 
-WorldSlot* initWorld(InputData* data) {
+WorldSlot* initializeWorldMatrix(InputData* data) {
     WorldSlot* worldMatrix = (WorldSlot*)initMatrix(data->rows, data->columns, sizeof(WorldSlot));
     return worldMatrix;
 }

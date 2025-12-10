@@ -43,7 +43,7 @@ static void initDefaultDirections() {
     defaultDirections[3] = 3;
 }
 
-Move *getMoveFor(MoveDirection direction) {
+Move *getMoveDirection(MoveDirection direction) {
 
     if (NORTH_MOVE == NULL || EAST_MOVE == NULL || SOUTH_MOVE == NULL || WEST_MOVE == NULL) {
 
@@ -79,7 +79,7 @@ struct DefaultMovements getDefaultPossibleMovements(int x, int y, InputData *inp
 
     for (int i = 0; i < 4; i++) {
         if (possibleMoves[i]) {
-            Move *move = getMoveFor(i);
+            Move *move = getMoveDirection(i);
 
             int finalX = x + move->x, finalY = y + move->y;
 
@@ -157,7 +157,7 @@ void getPossibleFoxMovements(int x, int y, InputData *inputData, WorldSlot *worl
     for (int i = 0; i < currentSlot.defaultP; i++) {
         MoveDirection direction = currentSlot.defaultPossibleMoveDirections[i];
 
-        Move *move = getMoveFor(direction);
+        Move *move = getMoveDirection(direction);
 
         WorldSlot *possibleSlot = &world[PROJECT(inputData->columns, x + move->x, y + move->y)];
 
@@ -212,7 +212,7 @@ void getPossibleRabbitMovements(int x, int y, InputData *inputData, WorldSlot *w
     for (int i = 0; i < currentSlot->defaultP; i++) {
         MoveDirection direction = currentSlot->defaultPossibleMoveDirections[i];
 
-        Move *move = getMoveFor(direction);
+        Move *move = getMoveDirection(direction);
 
         WorldSlot *possibleSlot = &world[PROJECT(inputData->columns, x + move->x, y + move->y)];
 

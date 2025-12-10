@@ -7,7 +7,7 @@ void freeNode(struct Node_s *node) {
 
 }
 
-LinkedList *ll_initList() {
+LinkedList *ll_initialize() {
 
     LinkedList *list = malloc(sizeof(LinkedList));
 

@@ -63,7 +63,7 @@ void executeSequentialThread(FILE* inputFile, FILE* outputFile) {
 
     initThreadData(data->threads, data, threadedData);
 
-    WorldSlot* world = initWorld(data);
+    WorldSlot* world = initializeWorldMatrix(data);
 
     readWorldInitialData(inputFile, data, world);
 
@@ -135,7 +135,7 @@ void executeWithThreadCount(int threadCount, FILE* inputFile, FILE* outputFile) 
 
     initThreadData(data->threads, data, threadedData);
 
-    WorldSlot* world = initWorld(data);
+    WorldSlot* world = initializeWorldMatrix(data);
 
     readWorldInitialData(inputFile, data, world);
 
@@ -216,7 +216,7 @@ static void tickRabbit(int genNumber, int startRow, int endRow, int row, int col
         int nextPosition = (genNumber + row + col) % possibleRabbitMoves->emptyMovements;
 
         MoveDirection direction = possibleRabbitMoves->emptyDirections[ nextPosition ];
-        Move* move = getMoveFor(direction);
+        Move* move = getMoveDirection(direction);
 
         int newRow = row + move->x, newCol = col + move->y;
 
@@ -420,7 +420,7 @@ static void tickFox(int genNumber, int startRow, int endRow, int row, int col, W
     }
 
     if (foxMovements->rabbitMovements > 0 || foxMovements->emptyMovements > 0) {
-        Move* move = getMoveFor(direction);
+        Move* move = getMoveDirection(direction);
 
         int newRow = row + move->x, newCol = col + move->y;
 

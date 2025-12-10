@@ -88,7 +88,7 @@ InputData *readInputData(FILE *file);
  * @param data
  * @return
  */
-WorldSlot *initWorld(InputData *data);
+WorldSlot *initializeWorldMatrix(InputData *data);
 
 void executeSequentialThread(FILE *inputFile, FILE *outputFile);
 

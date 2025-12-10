@@ -6,7 +6,7 @@
 
 // Input functions
 InputData* readInputData(FILE* file);
-WorldSlot* initWorld(InputData* data);
+WorldSlot* initializeWorldMatrix(InputData* data);
 void readWorldInitialData(FILE* file, InputData* data, WorldSlot* world);
 void initialRowEntityCount(InputData* inputData, WorldSlot* world);
 

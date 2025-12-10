@@ -40,7 +40,7 @@ struct RabbitMovements {
 
 };
 
-Move *getMoveFor(MoveDirection direction);
+Move *getMoveDirection(MoveDirection direction);
 
 struct DefaultMovements getDefaultPossibleMovements(int x, int y, InputData *inputData, WorldSlot *world);
 
