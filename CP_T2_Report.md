@@ -13,9 +13,9 @@ This project implements a parallel solution for simulating a **Rabbits and Foxes
 The algorithm simulates a predator-prey ecosystem where rabbits and foxes interact according to specific behavioral rules. The simulation progresses through discrete generations, with each generation consisting of:
 
 1. **Rabbit Movement Phase**: All rabbits attempt to move to adjacent empty cells
-2. **Conflict Resolution Phase**: Handle movements that cross thread boundaries
+2. **Rabbit Conflict Resolution**: Handle rabbit movements that cross thread boundaries
 3. **Fox Movement Phase**: Foxes move toward prey or empty cells
-4. **Entity Lifecycle Management**: Handle reproduction, death, and aging
+4. **Fox Conflict Resolution**: Handle fox movements and finalize generation state
 
 ### Entity Behavior Rules
 
@@ -64,27 +64,6 @@ The project follows a modular architecture with clear separation of concerns:
 
 ### Core Structures
 
-#### `InputData`
-Contains global simulation parameters and dynamic load balancing data:
-
-```c
-typedef struct InputData_ {
-    int gen_proc_rabbits, gen_proc_foxes, gen_food_foxes;
-    int n_gen;
-    int rows, columns;
-    int initialPopulation;
-    int threads;
-    int rocks;
-    int *entitiesAccumulatedPerRow;
-    int *entitiesPerRow;
-} InputData;
-```
-
-**Key Features:**
-- **Entity tracking per row**: Enables dynamic work distribution
-- **Accumulated counts**: Support for efficient binary search thread allocation
-- **Generation parameters**: Configurable reproduction and survival thresholds
-
 #### `WorldSlot`
 Represents individual ecosystem positions:
 
@@ -124,223 +103,90 @@ struct ThreadedData {
 
 ## Core Functions and Algorithm Logic
 
-### 1. Dynamic Work Distribution
+### 1. Parallel Simulation Architecture
 
-**Function mapping comparison with CP_T2.pdf:**
-- PDF Reference: `executeWithThreadCount()` → Our Implementation: `runParallelSimulation()` in `rabbitsandfoxes.c:339`
-- PDF Reference: `performGeneration()` → Our Implementation: `executeParallelGeneration()` in `rabbitsandfoxes.c:173`
+**Main Coordination Functions:**
 
-The implementation uses entity density-based thread allocation:
+| Function      | Responsibility |
+|---------------|----------------|
+| `runParallelSimulation()` | Thread creation, workload distribution, timing measurement |
+| `executeParallelGeneration()` |          Single generation execution across all threads |
+| `executeWorkerThread()` |  Individual thread execution loop |
 
-```c
-// Dynamic load balancing based on entity count per row
-int targetEntitiesPerThread = totalEntities / threadCount;
-// Binary search to find optimal row boundaries for each thread
-```
+### 2. Dynamic Work Distribution Strategy
 
-**Complexity**: O(t log2(r)) where t = thread count, r = number of rows
+**Entity-Density Load Balancing:**
+The system assigns work based on entity density rather than fixed row divisions. Binary search finds optimal row boundaries targeting equal entities per thread. 
 
-### 2. Generation Processing
+### 3. Generation Processing Pipeline
 
-**Function mapping comparison with CP_T2.pdf:**
-- PDF Reference: `performRabbitGeneration()` → Our Implementation: `processRabbitTurn()` in `rabbitsandfoxes.c:76`
-- PDF Reference: `performFoxGeneration()` → Our Implementation: `processFoxTurn()` in `rabbitsandfoxes.c:113`
+**Two-Phase Execution:**
+1. **Rabbit Phase**: Threads create local snapshots, process rabbit movements, defer cross-boundary conflicts, synchronize
+2. **Fox Phase**: Update snapshots, process fox movements (prioritizing prey), resolve conflicts, update entity counts
 
-Each generation follows a structured pipeline:
-1. **Rabbit movement phase** with boundary conflict detection
-2. **Synchronization** for conflict resolution
-3. **Fox movement phase** with prey detection
-4. **Final synchronization** and dynamic rebalancing
+Deterministic movement uses `(generation + row + col) % possibleMoves` ensuring reproducible results across thread counts.
 
-### 3. Entity Processing
+### 4. Entity Behavioral Models
 
-**Function mapping comparison with CP_T2.pdf:**
-- PDF Reference: `tickRabbit()` → Our Implementation: `processRabbitTurn()` in `rabbitsandfoxes.c:76`
-- PDF Reference: `tickFox()` → Our Implementation: `processFoxTurn()` in `rabbitsandfoxes.c:113`
+**Rabbits**: Move to empty adjacent cells. Reproduce when reaching maturity. Age-based conflict resolution (older wins).
 
-These functions handle individual entity logic including:
-- Movement validation and execution
-- Lifecycle state updates (aging, reproduction, death)
-- Cross-boundary movement conflict registration
+**Foxes**: Prioritize moves toward prey, fallback to empty cells. Increment starvation counter each turn, die if exceeding threshold. Age-based conflicts with food level tiebreaker.
 
-### 4. Thread Coordination Framework
+### 5. Inter-Thread Coordination
 
-The implementation provides sophisticated synchronization:
+**Synchronization Strategy:**
+- **Global Barriers**: All threads synchronize between rabbit and fox phases
+- **Local Semaphores**: Adjacent threads coordinate boundary conflict resolution
+- **Conflict Buffers**: Thread-safe storage for cross-boundary movements
 
-**Synchronization Points:**
-1. **Post-rabbit movement**: Handle rabbit boundary conflicts
-2. **Pre-fox movement**: Ensure consistent world state
-3. **Post-fox movement**: Handle fox boundary conflicts  
-4. **Dynamic rebalancing**: Update thread work distribution
+**Communication Pattern**: Threads only interact with immediate neighbors, reducing complexity from O(n²) to O(n).
 
-**Communication Pattern:**
-- Threads only synchronize with immediate neighbors (above/below)
-- Reduces synchronization overhead from O(n²) to O(n)
-- Enables scalable performance across thread counts
+## Technical Implementation Details
 
-## Supported Configurations
+**Memory Management**: Dynamic entity allocation with union-based storage. Pre-computed movement directions cached per position. Contiguous world matrix allocation for cache efficiency.
 
-### Test Ecosystem Configurations
+**Thread Safety**: Territorial ownership (threads own specific rows) + ordered synchronization prevents race conditions. Barrier synchronization eliminates deadlocks. Conflict buffers isolate cross-boundary operations.
 
-The implementation supports various ecosystem sizes with different thread counts:
+## Performance Results
 
-- **5x5**: Compatible with 1,2,4 threads (small test case)
-- **10x10**: Compatible with 1,2,4,8 threads  
-- **20x20**: Compatible with 1,2,4,8,16 threads
-- **100x100**: Compatible with 1,2,4,8,16,25 threads
-- **200x200**: Compatible with 1,2,4,8,16,25,50 threads
+### Execution Times and Speedup Analysis
 
-**Thread Scalability**: The makefile includes comprehensive test targets for all valid thread/ecosystem combinations.
+[**Performance data and measurements will be added here**]
 
-## Build System
+*Performance tables showing execution times for different ecosystem sizes and thread counts*
 
-### Makefile Targets
+### Speedup Charts and Efficiency Plots
 
-The build system provides extensive testing infrastructure:
+[**Performance plots and graphs will be inserted here**]
 
-```make
-# Compilation
-make                    # Build ecosystem executable
-make clean             # Clean build artifacts
+*Visual analysis of parallel performance including:*
+- *Speedup vs Thread Count graphs*
+- *Efficiency analysis charts*
+- *Scalability comparison plots*
 
-# Comprehensive Testing  
-make test              # Run all test configurations
-make test-5x5          # Test 5x5 ecosystem (1,2,4 threads)
-make test-10x10        # Test 10x10 ecosystem (1,2,4,8 threads)
-make test-20x20        # Test 20x20 ecosystem (1,2,4,8,16 threads)
-make test-100x100      # Test 100x100 ecosystem (1,2,4,8,16,25 threads)
-make test-200x200      # Test 200x200 ecosystem (1,2,4,8,16,25,50 threads)
-```
-
-**Testing Strategy:**
-- Sequential execution baseline for correctness validation
-- Multiple thread configurations per ecosystem size
-- Output verification against expected results
-- Performance measurement integration
-
-## Performance Analysis
-
-### Execution Times and Scalability
-
-Performance testing reveals the effectiveness of the parallel implementation:
-
-| Ecosystem Size | Sequential | 2 Threads | 4 Threads | 8 Threads | 16 Threads |
-|----------------|------------|-----------|-----------|-----------|------------|
-| 5x5            | Fast       | Overhead  | Overhead  | N/A       | N/A        |
-| 10x10          | Fast       | Minimal   | Minimal   | Overhead  | N/A        |
-| 20x20          | Moderate   | 1.3x      | 1.5x      | 1.8x      | 2.0x       |
-| 100x100        | Slow       | 1.8x      | 2.7x      | 3.8x      | 3.8x       |
-| 200x200        | Very Slow  | 1.9x      | 3.5x      | 6.2x      | 8.1x       |
-
-### Efficiency Analysis
+### Performance Analysis Discussion
 
 **Optimal Performance Characteristics:**
-- **Sweet Spot**: 8-16 threads for large ecosystems (200x200)
-- **Diminishing Returns**: Beyond 16 threads for smaller ecosystems
-- **Scalability Threshold**: Thread benefits plateau when work per thread becomes too small
+- **Sweet Spot**: [To be determined from experimental results]
+- **Diminishing Returns**: [Analysis based on measured data]
+- **Scalability Threshold**: [Identified from performance measurements]
 
 **Bottleneck Analysis:**
-1. **Small Ecosystems (<=20x20)**: Thread creation overhead dominates
-2. **Medium Ecosystems (100x100)**: Good parallel efficiency up to 8 threads
-3. **Large Ecosystems (200x200)**: Excellent scaling up to 16 threads
+1. **Small Ecosystems**: Thread overhead vs computation balance
+2. **Medium Ecosystems**: Communication vs computation trade-offs
+3. **Large Ecosystems**: Scalability and efficiency characteristics
 
-### Communication Overhead
+### Communication Overhead Analysis
 
 The parallel algorithm minimizes communication through:
 - **Localized synchronization**: Only adjacent threads communicate
 - **Structured conflict resolution**: Predictable communication patterns
 - **Dynamic load balancing**: Reduces idle time and workload imbalances
 
-## Technical Implementation Details
-
-### Memory Management
-
-**Entity Lifecycle:**
-- Dynamic allocation/deallocation of entity structures
-- Union-based storage for type-safe entity information
-- Automatic cleanup on entity death or simulation termination
-
-**Grid Optimization:**
-- Pre-computed movement possibilities to avoid runtime validation
-- Shared movement direction arrays for memory efficiency
-- Contiguous memory allocation for cache-friendly access patterns
-
-### Thread Safety
-
-**Synchronization Strategy:**
-- **Barriers**: Ensure phase completion across all threads
-- **Semaphores**: Coordinate conflict resolution between neighbors
-- **Conflict Buffers**: Thread-safe storage for cross-boundary movements
-
-**Race Condition Prevention:**
-- Clear ownership boundaries (threads own specific row ranges)
-- Structured communication protocols for boundary interactions
-- Atomic operations for shared entity count updates
-
-### Comparison with Reference Implementation
-
-**Function Name Mappings:**
-Our implementation uses different but equivalent function names compared to the CP_T2.pdf reference:
-
-| CP_T2.pdf Reference      | Our Implementation                | Location              |
-|--------------------------|-----------------------------------|-----------------------|
-| `performRabbitGeneration()` | `processRabbitTurn()`         | `rabbitsandfoxes.c:76`|
-| `performFoxGeneration()`    | `processFoxTurn()`            | `rabbitsandfoxes.c:113`|
-| `tickRabbit()`              | `processRabbitTurn()`         | `rabbitsandfoxes.c:76`|
-| `tickFox()`                 | `processFoxTurn()`            | `rabbitsandfoxes.c:113`|
-| `executeWithThreadCount()`  | `runParallelSimulation()`     | `rabbitsandfoxes.c:339`|
-| `performGeneration()`       | `executeParallelGeneration()` | `rabbitsandfoxes.c:173`|
-
-**Algorithmic Equivalence:**
-While function names differ, the core algorithmic approach remains consistent:
-- Generation-based ecosystem evolution
-- Row-based work distribution
-- Conflict resolution for cross-boundary movements
-- Dynamic load balancing based on entity density
-
-## Compilation Requirements
-
-```bash
-# Required system components
-gcc (GNU C Compiler)
-pthread library (-lpthread)
-POSIX semaphore support
-```
-
-### Input Format
-
-```
-gen_proc_rabbits gen_proc_foxes gen_food_foxes
-n_gen
-rows columns
-N
-rock_row rock_col
-...
-rabbit_row rabbit_col
-...
-fox_row fox_col
-```
-
-Where:
-- `gen_proc_rabbits/foxes`: Generations to reach procreation
-- `gen_food_foxes`: Generations foxes can survive without food
-- `n_gen`: Total generations to simulate
-- `rows columns`: Ecosystem dimensions
-- `N`: Number of entities and rocks
-- Followed by coordinates for rocks, rabbits, and foxes
 
 ## Conclusion
 
 This implementation successfully demonstrates efficient parallel simulation of complex ecosystem dynamics using pthread-based parallelization. The modular design enables flexible testing across different ecosystem sizes and thread configurations while maintaining correctness and performance.
-
-**Key Achievements:**
-- **Scalable Performance**: Up to 8x speedup for large ecosystems
-- **Dynamic Load Balancing**: Automatic workload distribution based on entity density
-- **Robust Testing**: Comprehensive test suite covering all valid configurations
-- **Memory Efficiency**: Optimized data structures and pre-computed movement tables
-- **Thread Safety**: Race-condition-free parallel execution
-
-The implementation provides a solid foundation for ecosystem simulation research and demonstrates practical parallel computing techniques applicable to discrete-event simulation systems.
 
 **Future Enhancements:**
 - **Hybrid Parallelization**: Combine pthreads with OpenMP for nested parallelism
