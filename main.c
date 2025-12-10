@@ -15,9 +15,9 @@ int main(int argc, char **argv) {
     }
 
     if (!sequential) {
-        executeWithThreadCount(threads, stdin, stdout);
+        runParallelSimulation(threads, stdin, stdout);
     } else {
-        executeSequentialThread(stdin, stdout);
+        runSequentialSimulation(stdin, stdout);
     }
 
     return 0;
