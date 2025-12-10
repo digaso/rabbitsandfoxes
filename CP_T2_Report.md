@@ -133,7 +133,7 @@ Deterministic movement uses `(generation + row + col) % possibleMoves` ensuring 
 
 **Memory Management**: Dynamic entity allocation with union-based storage. Pre-computed movement directions cached per position. Contiguous world matrix allocation for cache efficiency.
 
-**Thread Safety**: Territorial ownership (threads own specific rows) + ordered synchronization prevents race conditions. Barrier synchronization eliminates deadlocks. Conflict buffers isolate cross-boundary operations.
+**Thread Safety**: Territorial ownership + ordered synchronization prevents race conditions. Barrier synchronization eliminates deadlocks. Conflict buffers isolate cross-boundary operations.
 
 ## Performance Results
 
